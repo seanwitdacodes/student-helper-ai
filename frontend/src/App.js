@@ -1,7 +1,10 @@
 import { useState } from "react";
+import "./App.css";
 
 function App() {
   const [question, setQuestion] = useState("");
+  const [mode, setMode] = useState("tutor");
+  const [grade, setGrade] = useState("middle");
   const [answer, setAnswer] = useState("");
 
   const askQuestion = async () => {
@@ -15,37 +18,50 @@ function App() {
     try {
       const res = await fetch("http://localhost:5050/ask", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ question }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ question, mode, grade }),
       });
 
       const data = await res.json();
       setAnswer(data.answer);
-    } catch (err) {
-      setAnswer("❌ Error connecting to backend");
+    } catch {
+      setAnswer("❌ Error connecting to backend.");
     }
   };
 
   return (
-    <div style={{ padding: 40, maxWidth: 600 }}>
-      <h1>Student Helper</h1>
+    <div className="app">
+      <div className="card">
+        <h1>Student Helper AI</h1>
+        <p className="subtitle">Learn smarter, not harder.</p>
 
-      <textarea
-        rows="4"
-        style={{ width: "100%" }}
-        placeholder="Ask a question..."
-        value={question}
-        onChange={(e) => setQuestion(e.target.value)}
-      />
+        <label>Mode</label>
+        <select value={mode} onChange={(e) => setMode(e.target.value)}>
+          <option value="tutor">Tutor Mode</option>
+          <option value="answer">Answer Mode</option>
+          <option value="practice">Practice Mode</option>
+        </select>
 
-      <br />
-      <br />
+        <label>Grade Level</label>
+        <select value={grade} onChange={(e) => setGrade(e.target.value)}>
+          <option value="middle">Middle School</option>
+          <option value="high">High School</option>
+        </select>
 
-      <button onClick={askQuestion}>Ask</button>
+        <textarea
+          placeholder="Ask a question (e.g. What is 3 × 3?)"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+        />
 
-      <p style={{ marginTop: 20, whiteSpace: "pre-line" }}>{answer}</p>
+        <button onClick={askQuestion}>Ask</button>
+
+        {answer && (
+          <div className="answer-box">
+            <pre>{answer}</pre>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
