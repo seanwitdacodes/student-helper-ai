@@ -6,83 +6,105 @@ body {
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: linear-gradient(135deg, #667eea, #764ba2);
+  background: #f4f4f5;
 }
 
-.app {
-  min-height: 100vh;
+.layout {
   display: flex;
-  justify-content: center;
-  align-items: center;
+  height: 100vh;
 }
 
-.card {
-  background: white;
-  width: 100%;
-  max-width: 480px;
-  padding: 30px;
-  border-radius: 16px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
-}
-
-h1 {
-  margin: 0;
-  text-align: center;
-}
-
-.subtitle {
-  text-align: center;
-  color: #666;
-  margin-bottom: 20px;
-}
-
-label {
-  display: block;
-  margin-top: 15px;
-  font-weight: 600;
-}
-
-select,
-textarea {
-  width: 100%;
-  margin-top: 6px;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid #ccc;
-  font-size: 14px;
-}
-
-textarea {
-  min-height: 90px;
-  resize: vertical;
-}
-
-button {
-  width: 100%;
-  margin-top: 20px;
-  padding: 12px;
-  border: none;
-  border-radius: 10px;
-  background: #667eea;
+/* Sidebar */
+.sidebar {
+  width: 220px;
+  background: #1e1e2f;
   color: white;
-  font-size: 16px;
-  font-weight: 600;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar h2 {
+  margin-bottom: 16px;
+}
+
+.sidebar button {
+  background: none;
+  color: white;
+  border: none;
+  text-align: left;
+  padding: 10px;
+  border-radius: 6px;
   cursor: pointer;
 }
 
-button:hover {
-  background: #5a67d8;
+.sidebar button:hover {
+  background: #2a2a40;
 }
 
-.answer-box {
-  margin-top: 20px;
-  background: #f7f7f7;
-  padding: 15px;
-  border-radius: 10px;
-  border-left: 4px solid #667eea;
+.sidebar button.active {
+  background: #4f46e5;
 }
 
-pre {
+.sidebar hr {
+  margin: 16px 0;
+  border-color: #444;
+}
+
+/* Chat Area */
+.chat-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Messages */
+.chat-window {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.message {
+  max-width: 70%;
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 12px;
   white-space: pre-wrap;
-  margin: 0;
+}
+
+.message.user {
+  background: #4f46e5;
+  color: white;
+  margin-left: auto;
+}
+
+.message.assistant {
+  background: #e5e7eb;
+}
+
+/* Input */
+.chat-input {
+  display: flex;
+  padding: 12px;
+  border-top: 1px solid #ddd;
+  background: white;
+}
+
+.chat-input textarea {
+  flex: 1;
+  resize: none;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+}
+
+.chat-input button {
+  margin-left: 8px;
+  padding: 10px 16px;
+  border: none;
+  background: #4f46e5;
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
 }
