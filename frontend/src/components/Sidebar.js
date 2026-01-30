@@ -1,5 +1,5 @@
-function Sidebar({ mode, setMode }) {
-  const modes = ["Tutor", "Student", "Math"];
+function Sidebar({ mode, setMode, setView }) {
+  const modes = ["Answer", "Tutor", "Math"];
 
   return (
     <div className="sidebar">
@@ -9,7 +9,10 @@ function Sidebar({ mode, setMode }) {
         <button
           key={m}
           className={mode === m ? "active" : ""}
-          onClick={() => setMode(m)}
+          onClick={() => {
+            setMode(m);
+            setView("chat");
+          }}
         >
           {m} Mode
         </button>
@@ -17,8 +20,8 @@ function Sidebar({ mode, setMode }) {
 
       <hr />
 
-      <button disabled>📚 Flashcards</button>
-      <button disabled>🖥 Slides</button>
+      <button onClick={() => setView("flashcards")}>📚 Flashcards</button>
+      <button onClick={() => setView("slides")}>🖥 Slides</button>
     </div>
   );
 }

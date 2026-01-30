@@ -1,20 +1,50 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 
-function ChatInput({ onSend }) {
+function ChatInput({ onSend, onSendImage }) {
   const [text, setText] = useState("");
+  const [image, setImage] = useState(null);
+  const fileInputRef = useRef(null);
 
   const send = () => {
-    if (!text.trim()) return;
-    onSend(text);
+    if (!text.trim() && !image) return;
+
+    if (image) {
+      onSendImage(text, image);
+      setImage(null);
+    } else {
+      onSend(text);
+    }
+
     setText("");
   };
 
   return (
     <div className="chat-input">
+      {/* PLUS BUTTON */}
+      <button
+        className="upload-btn"
+        onClick={() => fileInputRef.current.click()}
+        title="Upload image"
+      >
+        +
+      </button>
+
+      {/* HIDDEN FILE INPUT */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => setImage(e.target.files[0])}
+      />
+
+      {/* TEXT INPUT */}
       <textarea
-        placeholder="Type your message..."
         value={text}
         onChange={(e) => setText(e.target.value)}
+        placeholder={
+          image ? "Ask about the uploaded image…" : "Type your question…"
+        }
         onKeyDown={(e) => {
           if (e.key === "Enter" && !e.shiftKey) {
             e.preventDefault();
@@ -22,7 +52,11 @@ function ChatInput({ onSend }) {
           }
         }}
       />
-      <button onClick={send}>Send</button>
+
+      {/* SEND BUTTON */}
+      <button className="send-btn" onClick={send}>
+        Send
+      </button>
     </div>
   );
 }

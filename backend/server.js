@@ -1,11 +1,8 @@
 import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
-import dotenv from "dotenv";
-
-dotenv.config();
-
-console.log("AI KEY LOADED:", process.env.AI_API_KEY ? "YES" : "NO");
+import multer from "multer";
+import fs from "fs";
 
 const app = express();
 const PORT = 5050;
@@ -13,101 +10,87 @@ const PORT = 5050;
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (req, res) => {
+const upload = multer({ dest: "uploads/" });
+
+app.get("/", (_, res) => {
   res.send("Student Helper AI backend running");
 });
 
-// ---------- REAL AI FUNCTION ----------
-async function askAI(question, mode, grade) {
-  const systemPrompt =
-    mode === "answer"
-      ? "Give a short, direct answer."
-      : mode === "practice"
-        ? "Give 3 practice questions only."
-        : grade === "high"
-          ? "Explain clearly at a high school level."
-          : "Explain clearly at a middle school level.";
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+/* ---------- OLLAMA HELPER ---------- */
+async function askOllama(payload) {
+  const res = await fetch("http://localhost:11434/api/generate", {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env.AI_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: question },
-      ],
-      temperature: 0.4,
-    }),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI API error ${response.status}: ${errorText}`);
-  }
-
-  const data = await response.json();
-  return data.choices[0].message.content;
+  const data = await res.json();
+  return data.response;
 }
 
-// ---------- MAIN ENDPOINT ----------
-app.post("/ask", async (req, res) => {
-  const { question, mode = "tutor", grade = "middle" } = req.body;
+/* ---------- TEXT CHAT ---------- */
+app.post("/chat", async (req, res) => {
+  const { message, mode } = req.body;
 
-  if (!question) {
-    return res.json({ answer: "Please enter a question." });
+  let systemPrompt = "";
+
+  if (mode === "Answer") {
+    systemPrompt =
+      "Give the shortest, most direct answer possible. Do not explain unless asked.";
   }
 
-  // 1️⃣ Try math FIRST (only if it looks like math)
-  const mathCandidate = question
-    .toLowerCase()
-    .replace("what is", "")
-    .replace("?", "")
-    .replace(/x/g, "*")
-    .replace(/÷/g, "/")
-    .trim();
-
-  if (/^[0-9+\-*/().\s]+$/.test(mathCandidate)) {
-    try {
-      const result = eval(mathCandidate);
-
-      if (mode === "answer") {
-        return res.json({ answer: `${result}` });
-      }
-
-      if (mode === "practice") {
-        return res.json({
-          answer:
-            grade === "high"
-              ? "Try these:\n1) 7 × 8\n2) 12 ÷ 3\n3) 9 × 6"
-              : "Try these:\n1) 4 × 5\n2) 6 × 3\n3) 10 ÷ 2",
-        });
-      }
-
-      return res.json({
-        answer: `Let's break it down step by step:\n${mathCandidate} = ${result}`,
-      });
-    } catch {
-      // If math eval fails, fall through to AI
-    }
+  if (mode === "Tutor") {
+    systemPrompt =
+      "Explain step by step. Be patient and educational. Encourage questions.";
   }
 
-  // 2️⃣ EVERYTHING ELSE → REAL AI
-  try {
-    const aiAnswer = await askAI(question, mode, grade);
-    res.json({ answer: aiAnswer });
-  } catch (err) {
-    console.error("AI ERROR:", err.message);
-    res.json({
-      answer: "There was an error contacting the AI. Try again.",
-    });
+  if (mode === "Math") {
+    systemPrompt =
+      "Solve the math problem. Show all steps clearly and explain formulas.";
   }
+
+  const answer = await askOllama({
+    model: "llama3",
+    prompt: `${systemPrompt}\n\nUser question:\n${message}`,
+    stream: false,
+  });
+
+  res.json({ answer });
 });
 
-// ---------- START SERVER ----------
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+/* ---------- IMAGE / VISION CHAT ---------- */
+app.post("/vision", upload.single("image"), async (req, res) => {
+  const { question, mode } = req.body;
+  const imagePath = req.file.path;
+
+  const imageBase64 = fs.readFileSync(imagePath, "base64");
+
+  let systemPrompt = "";
+
+  if (mode === "Answer") {
+    systemPrompt = "Give a direct answer based on the image.";
+  }
+
+  if (mode === "Tutor") {
+    systemPrompt = "Explain step by step using the image.";
+  }
+
+  if (mode === "Math") {
+    systemPrompt = "Solve the math problem shown. Show all steps.";
+  }
+
+  const answer = await askOllama({
+    model: "llava",
+    prompt: `${systemPrompt}\n\nUser question:\n${question || "Analyze this image."}`,
+    images: [imageBase64],
+    stream: false,
+  });
+
+  fs.unlinkSync(imagePath); // delete uploaded image
+
+  res.json({ answer });
+});
+
+app.listen(PORT, () => {
+  console.log(`Backend running on http://localhost:${PORT}`);
 });
