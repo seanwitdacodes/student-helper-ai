@@ -8,16 +8,33 @@ import "./App.css";
 
 function App() {
   const defaultFlashcardsState = {
+    deckTitle: "",
+    deckDescription: "",
     notes: "",
     rawCards: "",
+    importText: "",
+    exportText: "",
     cards: [],
-    mode: "learn",
+    mode: "flashcards",
+    promptSide: "term",
+    starredOnly: false,
+    studyIndex: 0,
     index: 0,
     isFlipped: false,
-    showAnswer: false,
-    userAnswer: "",
-    score: 0,
-    attempts: 0,
+    writeInput: "",
+    writeFeedback: "",
+    learnFeedback: "",
+    stats: { correct: 0, attempts: 0, streak: 0, bestStreak: 0 },
+    testQuestions: [],
+    testAnswers: {},
+    testSubmitted: false,
+    matchTokens: [],
+    matchSelected: [],
+    matchMatched: [],
+    matchStartedAt: 0,
+    matchFinishedAt: 0,
+    matchMoves: 0,
+    bestMatchMs: 0,
     count: 12,
   };
 
@@ -30,6 +47,10 @@ function App() {
 
   const normalizeConversation = (c) => {
     const view = c.view || "chat";
+    const flashcards = { ...defaultFlashcardsState, ...(c.flashcards || {}) };
+    if (!["flashcards", "learn", "write", "test", "match"].includes(flashcards.mode)) {
+      flashcards.mode = "flashcards";
+    }
     return {
       ...c,
       view,
@@ -37,7 +58,7 @@ function App() {
         c.title ||
         (view === "flashcards" ? "Flashcards" : view === "slides" ? "Slides" : "New Chat"),
       messages: Array.isArray(c.messages) ? c.messages : [],
-      flashcards: { ...defaultFlashcardsState, ...(c.flashcards || {}) },
+      flashcards,
       slides: { ...defaultSlidesState, ...(c.slides || {}) },
     };
   };
@@ -277,7 +298,11 @@ function App() {
               </button>
             </div>
             <ChatWindow messages={activeConversation?.messages || []} />
-            <ChatInput onSend={sendMessage} onSendImage={sendImageMessage} />
+            <ChatInput
+              mode={activeConversation?.mode || "Answer"}
+              onSend={sendMessage}
+              onSendImage={sendImageMessage}
+            />
           </>
         )}
 
