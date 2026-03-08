@@ -41,6 +41,42 @@ function createCard(term = "", definition = "") {
   };
 }
 
+function cleanCardText(value, side) {
+  let text = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!text) return "";
+
+  text = text
+    .replace(/^(?:flash\s*card|flashcard|card)\s*\d+\s*[:.)-]?\s*/i, "")
+    .replace(
+      /^(?:\d+\s*[).:-]\s*)?(?:q(?:uestion)?|a(?:nswer)?|term|definition)\s*:\s*/i,
+      "",
+    )
+    .trim();
+
+  if (side === "term") {
+    text = text
+      .replace(
+        /\s+(?:flash\s*card|flashcard|card)\s*\d+\s*[:.)-]?\s*(?:a(?:nswer)?|definition)\s*:.*$/i,
+        "",
+      )
+      .replace(/\s+(?:a(?:nswer)?|definition)\s*:.*$/i, "");
+  } else {
+    text = text
+      .replace(
+        /\s+(?:flash\s*card|flashcard|card)\s*\d+\s*[:.)-]?\s*(?:q(?:uestion)?|term)\s*:.*$/i,
+        "",
+      )
+      .replace(/\s+(?:q(?:uestion)?|term)\s*:.*$/i, "");
+  }
+
+  text = text.replace(/\s+(?:flash\s*card|flashcard|card)\s*\d+\s*[:.)-]?\s*$/i, "");
+
+  return text.trim();
+}
+
 function normalizeCard(card, index) {
   if (!card) return createCard();
 
@@ -60,8 +96,8 @@ function normalizeCard(card, index) {
 
   return {
     id: card.id || `${uid()}-${index}`,
-    term,
-    definition,
+    term: cleanCardText(term, "term"),
+    definition: cleanCardText(definition, "definition"),
     star: Boolean(card.star),
     familiarity: Number.isFinite(card.familiarity) ? card.familiarity : 0,
   };
@@ -102,17 +138,22 @@ function parseCards(text) {
 
     if (questionMatch) {
       if (current.term || current.definition) {
-        parsed.push(createCard(current.term, current.definition));
+        parsed.push(
+          createCard(
+            cleanCardText(current.term, "term"),
+            cleanCardText(current.definition, "definition"),
+          ),
+        );
       }
       current = {
-        term: questionMatch[1].trim(),
+        term: cleanCardText(questionMatch[1], "term"),
         definition: "",
       };
       continue;
     }
 
     if (answerMatch) {
-      current.definition = answerMatch[1].trim();
+      current.definition = cleanCardText(answerMatch[1], "definition");
       continue;
     }
 
@@ -121,10 +162,15 @@ function parseCards(text) {
       const definition = rest.join("::").trim();
       if (term.trim() && definition) {
         if (current.term || current.definition) {
-          parsed.push(createCard(current.term, current.definition));
+          parsed.push(
+            createCard(
+              cleanCardText(current.term, "term"),
+              cleanCardText(current.definition, "definition"),
+            ),
+          );
           current = { term: "", definition: "" };
         }
-        parsed.push(createCard(term.trim(), definition));
+        parsed.push(createCard(cleanCardText(term, "term"), cleanCardText(definition, "definition")));
         continue;
       }
     }
@@ -134,23 +180,33 @@ function parseCards(text) {
       const definition = rest.join(" ").trim();
       if (term.trim() && definition) {
         if (current.term || current.definition) {
-          parsed.push(createCard(current.term, current.definition));
+          parsed.push(
+            createCard(
+              cleanCardText(current.term, "term"),
+              cleanCardText(current.definition, "definition"),
+            ),
+          );
           current = { term: "", definition: "" };
         }
-        parsed.push(createCard(term.trim(), definition));
+        parsed.push(createCard(cleanCardText(term, "term"), cleanCardText(definition, "definition")));
         continue;
       }
     }
 
     if (current.definition) {
-      current.definition = `${current.definition} ${cleaned}`.trim();
+      current.definition = cleanCardText(`${current.definition} ${cleaned}`, "definition");
     } else if (current.term) {
-      current.term = `${current.term} ${cleaned}`.trim();
+      current.term = cleanCardText(`${current.term} ${cleaned}`, "term");
     }
   }
 
   if (current.term || current.definition) {
-    parsed.push(createCard(current.term, current.definition));
+    parsed.push(
+      createCard(
+        cleanCardText(current.term, "term"),
+        cleanCardText(current.definition, "definition"),
+      ),
+    );
   }
 
   return parsed.filter((card) => card.term.trim() && card.definition.trim());
