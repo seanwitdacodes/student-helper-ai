@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 
 const MODES = ["flashcards", "learn", "write", "test", "match"];
+const PRO_ONLY_MODES = ["test", "match"];
 
 const modeLabel = {
   flashcards: "Flashcards",
@@ -309,7 +310,7 @@ function checkResponse(expected, actual) {
   return normExpected === normActual || normExpected.includes(normActual);
 }
 
-function Flashcards({ state, onChange }) {
+function Flashcards({ state, onChange, plan = "free", onOpenBilling }) {
   const update = (patch) => onChange({ ...state, ...patch });
 
   const cards = useMemo(
@@ -317,17 +318,25 @@ function Flashcards({ state, onChange }) {
     [state.cards],
   );
 
+  const hasFullAccess = plan !== "free";
   const mode = MODES.includes(state.mode)
-    ? state.mode
+    ? !hasFullAccess && PRO_ONLY_MODES.includes(state.mode)
+      ? "flashcards"
+      : state.mode
     : state.mode === "learn" || state.mode === "test"
     ? state.mode
     : "flashcards";
 
   const promptSide = state.promptSide === "definition" ? "definition" : "term";
   const starredOnly = Boolean(state.starredOnly);
+  const searchTerm = String(state.searchTerm || "").trim().toLowerCase();
   const filteredCards = useMemo(
-    () => (starredOnly ? cards.filter((c) => c.star) : cards),
-    [cards, starredOnly],
+    () =>
+      (starredOnly ? cards.filter((c) => c.star) : cards).filter((card) => {
+        if (!searchTerm) return true;
+        return `${card.term} ${card.definition}`.toLowerCase().includes(searchTerm);
+      }),
+    [cards, searchTerm, starredOnly],
   );
 
   const studyIndex = Number.isFinite(state.studyIndex)
@@ -344,6 +353,7 @@ function Flashcards({ state, onChange }) {
   const isFlipped = Boolean(state.isFlipped);
 
   const [isGenerating, setIsGenerating] = useState(false);
+  const maxGeneratedCards = hasFullAccess ? 50 : 12;
 
   const testQuestions = useMemo(
     () => (Array.isArray(state.testQuestions) ? state.testQuestions : []),
@@ -375,6 +385,16 @@ function Flashcards({ state, onChange }) {
 
   const setCards = (nextCards, extra = {}) => {
     update({ cards: nextCards, ...extra });
+  };
+
+  const speak = (value) => {
+    if (!hasFullAccess) {
+      onOpenBilling?.();
+      return;
+    }
+    if (!("speechSynthesis" in window) || !value) return;
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(new SpeechSynthesisUtterance(value));
   };
 
   const moveTo = (next) => {
@@ -470,6 +490,10 @@ function Flashcards({ state, onChange }) {
   };
 
   const exportDeck = () => {
+    if (!hasFullAccess) {
+      onOpenBilling?.();
+      return;
+    }
     const text = cards.map((card) => `Q: ${card.term}\nA: ${card.definition}`).join("\n\n");
     update({ exportText: text });
   };
@@ -483,7 +507,11 @@ function Flashcards({ state, onChange }) {
       const res = await fetch("http://localhost:5050/flashcards", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ notes: state.notes, count: state.count || 12 }),
+        body: JSON.stringify({
+          notes: state.notes,
+          count: Math.min(maxGeneratedCards, state.count || 12),
+          tier: plan,
+        }),
       });
 
       const data = await res.json();
@@ -693,11 +721,11 @@ function Flashcards({ state, onChange }) {
 
   return (
     <div className="tool flashcards quizlet-style">
-      <div className="tool-header">
-        <div>
-          <div className="tool-eyebrow">Flashcards</div>
-          <h3>Student Helper Deck Studio</h3>
-        </div>
+        <div className="tool-header">
+          <div>
+            <div className="tool-eyebrow">Flashcards</div>
+            <h3>Student Helper Deck Studio</h3>
+          </div>
         <div className="stats-pills">
           <span>{cards.length} cards</span>
           <span>{totalMastered} mastered</span>
@@ -707,6 +735,19 @@ function Flashcards({ state, onChange }) {
 
       <div className="tool-grid flashcards-grid">
         <div className="tool-panel deck-builder">
+          {!hasFullAccess && (
+            <div className="plan-callout">
+              <strong>Free plan</strong>
+              <span>
+                Includes study, learn, and write. Start a free trial or unlock the full version for
+                test mode, match mode, export, speech, and up to 50 AI-generated cards.
+              </span>
+              <button className="quiet-btn" onClick={() => onOpenBilling?.()}>
+                See plans
+              </button>
+            </div>
+          )}
+
           <div className="deck-form">
             <label>
               Deck title
@@ -724,6 +765,15 @@ function Flashcards({ state, onChange }) {
                 placeholder="What this set covers"
                 value={state.deckDescription || ""}
                 onChange={(e) => update({ deckDescription: e.target.value })}
+              />
+            </label>
+            <label>
+              Search cards
+              <input
+                type="text"
+                placeholder="Filter by term or definition"
+                value={state.searchTerm || ""}
+                onChange={(e) => update({ searchTerm: e.target.value, studyIndex: 0, index: 0 })}
               />
             </label>
           </div>
@@ -802,16 +852,23 @@ function Flashcards({ state, onChange }) {
                 <input
                   type="number"
                   min="6"
-                  max="50"
+                  max={maxGeneratedCards}
                   value={state.count || 12}
                   onChange={(e) =>
-                    update({ count: Math.min(50, Math.max(6, Number(e.target.value) || 6)) })
+                    update({
+                      count: Math.min(maxGeneratedCards, Math.max(6, Number(e.target.value) || 6)),
+                    })
                   }
                 />
               </label>
               <button onClick={generateDeck} disabled={isGenerating || !String(state.notes || "").trim()}>
                 {isGenerating ? "Generating..." : "Generate deck"}
               </button>
+            </div>
+            <div className="deck-meta">
+              {hasFullAccess
+                ? "Full access can generate up to 50 cards per deck."
+                : "Free can generate up to 12 cards per deck."}
             </div>
             {state.rawCards && (
               <details className="raw-output">
@@ -836,7 +893,7 @@ function Flashcards({ state, onChange }) {
                 Import
               </button>
               <button onClick={exportDeck} className="quiet-btn">
-                Export
+                {hasFullAccess ? "Export" : "Export Full Version"}
               </button>
             </div>
             {state.exportText && <textarea className="small-textarea" readOnly value={state.exportText} />}
@@ -847,7 +904,10 @@ function Flashcards({ state, onChange }) {
           <div className="deck-header">
             <div>
               <div className="deck-title">{state.deckTitle || "Untitled deck"}</div>
-              <div className="deck-meta">{progressText}</div>
+              <div className="deck-meta">
+                {progressText}
+                {searchTerm ? ` • Filter: ${state.searchTerm}` : ""}
+              </div>
             </div>
             <div className="deck-meta">{modeLabel[mode]}</div>
           </div>
@@ -859,6 +919,11 @@ function Flashcards({ state, onChange }) {
                   key={m}
                   className={mode === m ? "active" : ""}
                   onClick={() => {
+                    if (!hasFullAccess && PRO_ONLY_MODES.includes(m)) {
+                      onOpenBilling?.();
+                      return;
+                    }
+
                     const basePatch = {
                       mode: m,
                       testSubmitted: false,
@@ -880,6 +945,7 @@ function Flashcards({ state, onChange }) {
                   }}
                 >
                   {modeLabel[m]}
+                  {!hasFullAccess && PRO_ONLY_MODES.includes(m) ? " Full" : ""}
                 </button>
               ))}
             </div>
@@ -932,6 +998,9 @@ function Flashcards({ state, onChange }) {
               <div className="learning-actions">
                 <button onClick={() => setFamiliarity(-1)} className="quiet-btn danger">
                   Still learning
+                </button>
+                <button onClick={() => speak(prompt)} className="quiet-btn">
+                  Speak
                 </button>
                 <button onClick={() => setFamiliarity(1)} className="quiet-btn success">
                   Know it
