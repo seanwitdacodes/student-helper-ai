@@ -40,7 +40,7 @@ function formatCardNumber(value) {
     .replace(/(\d{4})(?=\d)/g, "$1 ");
 }
 
-function BillingModal({ account, trialLengthDays = 7, onClose, onStartTrial, onUpgrade, onDowngrade }) {
+function BillingModal({ account, trialLengthDays = 7, onClose, onStartTrial, onUpgrade, onDowngrade, inline = false }) {
   const [cardholder, setCardholder] = useState(account.paymentMethod?.holderName || "");
   const [cardNumber, setCardNumber] = useState("");
   const [expiry, setExpiry] = useState(account.paymentMethod?.expiry || "");
@@ -86,18 +86,18 @@ function BillingModal({ account, trialLengthDays = 7, onClose, onStartTrial, onU
     });
   };
 
-  return (
-    <div className="modal-shell" role="dialog" aria-modal="true">
-      <div className="modal-backdrop" onClick={onClose} />
-      <div className="billing-modal">
+  const content = (
+    <div className="billing-modal">
         <div className="billing-header">
           <div>
-            <div className="tool-eyebrow">Billing</div>
-            <h3>Free, trial, and full version</h3>
+            <div className="tool-eyebrow">{inline ? "Update Version" : "Billing"}</div>
+            <h3>{inline ? "Choose your Helper AI plan" : "Free, trial, and full version"}</h3>
           </div>
-          <button type="button" className="quiet-btn" onClick={onClose}>
-            Close
-          </button>
+          {!inline && (
+            <button type="button" className="quiet-btn" onClick={onClose}>
+              Close
+            </button>
+          )}
         </div>
 
         <div className="billing-plan-grid">
@@ -253,7 +253,17 @@ function BillingModal({ account, trialLengthDays = 7, onClose, onStartTrial, onU
             </div>
           </form>
         )}
-      </div>
+    </div>
+  );
+
+  if (inline) {
+    return <div className="update-view">{content}</div>;
+  }
+
+  return (
+    <div className="modal-shell" role="dialog" aria-modal="true">
+      <div className="modal-backdrop" onClick={onClose} />
+      {content}
     </div>
   );
 }

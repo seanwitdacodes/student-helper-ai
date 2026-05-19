@@ -1,25 +1,27 @@
 import { useMemo, useState } from "react";
 
-const MODE_META = {
-  Answer: "Fast direct responses",
-  Tutor: "Explain ideas step by step",
-  Build: "Product, UI, and coding workflows",
-  Research: "Compare options and draft reports",
-  Automation: "Design recurring task flows",
-  Math: "Camera solver with worked steps",
-};
-
 const NAV_ITEMS = [
-  { id: "new", label: "New chat", kind: "action" },
-  { id: "research", label: "Search", kind: "mode", mode: "Research" },
-  { id: "build", label: "Plugins", kind: "mode", mode: "Build" },
-  { id: "automation", label: "Automations", kind: "mode", mode: "Automation" },
+  { id: "home", label: "Home", kind: "chat" },
+  { id: "control", label: "Control Computer Mode", kind: "chat", mode: "Control" },
+  { id: "math", label: "Math Solver", kind: "chat", mode: "Math" },
+  { id: "flashcards", label: "Flashcards", kind: "view", view: "flashcards" },
+  { id: "slides", label: "Slides", kind: "view", view: "slides" },
+  { id: "update", label: "Update Version", kind: "view", view: "update" },
 ];
 
-function getTrialDaysLeft(trialEndsAt) {
-  const remainingMs = Number(trialEndsAt || 0) - Date.now();
-  if (remainingMs <= 0) return 0;
-  return Math.max(1, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
+const MODE_PREVIEW = {
+  Build: "A new chat is ready.",
+  Control: "Control Computer Mode is ready.",
+  Math: "Math Solver is ready.",
+  Tutor: "Tutor Mode is ready.",
+  Research: "Research Mode is ready.",
+  Automation: "Automation Mode is ready.",
+};
+
+function getPlanLabel(tier) {
+  if (tier === "pro") return "Full Version";
+  if (tier === "trial") return "Free Trial";
+  return "Free Plan";
 }
 
 function formatRelativeTime(timestamp) {
@@ -42,120 +44,171 @@ function formatRelativeTime(timestamp) {
   return `${days}d`;
 }
 
+function getPreviewText(conversation) {
+  const latest = String(conversation.messages?.[conversation.messages.length - 1]?.content || "").trim();
+  if (latest) {
+    return latest
+      .replace(/```[\s\S]*?```/g, "[code]")
+      .replace(/\s+/g, " ")
+      .slice(0, 90);
+  }
+
+  return MODE_PREVIEW[conversation.mode] || "A fresh thread is ready.";
+}
+
 function Sidebar({
   mode,
   activeView,
   account,
-  setMode,
   conversations,
   activeId,
-  onOpenBilling,
+  collapsed = false,
+  isOpen = false,
+  onToggleCollapse,
+  onOpenHome,
+  onOpenControlMode,
+  onOpenMathMode,
   onSelectConversation,
   onNewConversation,
   onOpenTool,
   onDeleteConversation,
 }) {
   const [showAllThreads, setShowAllThreads] = useState(false);
-  const modes = ["Build", "Research", "Tutor", "Automation", "Math"];
-  const trialDaysLeft = account?.tier === "trial" ? getTrialDaysLeft(account?.trialEndsAt) : 0;
-  const planTitle = account?.tier === "pro" ? "Max unlocked" : account?.tier === "trial" ? "Free trial" : "Upgrade";
-  const planSummary =
-    account?.tier === "pro"
-      ? "Full workspace"
-      : account?.tier === "trial"
-      ? trialDaysLeft > 0
-        ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left`
-        : "Ends today"
-      : "Starter";
+  const [searchTerm, setSearchTerm] = useState("");
+  const normalizedSearch = searchTerm.trim().toLowerCase();
 
   const visibleConversations = useMemo(
-    () => (showAllThreads ? conversations : conversations.slice(0, 5)),
-    [conversations, showAllThreads],
+    () =>
+      (showAllThreads ? conversations : conversations.slice(0, 12)).filter((conversation) => {
+        if (!normalizedSearch) return true;
+        const haystack = [
+          conversation.title,
+          getPreviewText(conversation),
+        ]
+          .join(" ")
+          .toLowerCase();
+        return haystack.includes(normalizedSearch);
+      }),
+    [conversations, normalizedSearch, showAllThreads],
   );
+  const planLabel = getPlanLabel(account?.tier);
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-topbar">
-        <div className="window-controls" aria-hidden="true">
-          <span className="window-dot red" />
-          <span className="window-dot yellow" />
-          <span className="window-dot green" />
+    <aside className={`sidebar ${collapsed ? "is-collapsed" : ""} ${isOpen ? "is-open" : ""}`}>
+      <div className="sidebar-top">
+        <div className="sidebar-brand-block">
+          <div className="brand-mark" aria-hidden="true">
+            H
+          </div>
+          {!collapsed && (
+            <div className="sidebar-brand-copy">
+              <div className="sidebar-brand-title">Helper AI</div>
+              <div className="sidebar-brand-subtitle">Calm, fast AI chat</div>
+            </div>
+          )}
         </div>
-        <button className="sidebar-update-btn" onClick={onOpenBilling}>
-          Update
+        <button
+          type="button"
+          className="sidebar-collapse-btn"
+          onClick={onToggleCollapse}
+          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {collapsed ? ">>" : "<<"}
         </button>
       </div>
+
+      <button className="new-chat-btn" onClick={onNewConversation} title="New chat">
+        <span className="sidebar-nav-icon" aria-hidden="true">
+          +
+        </span>
+        {!collapsed && <span>New chat</span>}
+      </button>
+
+      {!collapsed && (
+        <label className="sidebar-search">
+          <span className="section-label">Search</span>
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search chats"
+            aria-label="Search chats"
+          />
+        </label>
+      )}
+
+      {!collapsed && (
+        <div className="sidebar-section-head">
+          <div className="section-label">Menu</div>
+        </div>
+      )}
 
       <div className="sidebar-nav">
         {NAV_ITEMS.map((item) => (
           <button
             key={item.id}
-            className={`sidebar-nav-item ${item.mode === mode && activeView === "chat" ? "active" : ""}`}
+            type="button"
+            title={item.label}
+            className={`sidebar-nav-item ${
+              (item.id === "home" && activeView === "chat" && mode !== "Control" && mode !== "Math") ||
+              (item.mode === mode && activeView === "chat") ||
+              (item.view === activeView)
+                ? "active"
+                : ""
+            }`}
             onClick={() => {
-              if (item.kind === "action") {
-                onNewConversation();
+              if (item.id === "home") {
+                onOpenHome();
                 return;
               }
-              setMode(item.mode);
+
+              if (item.mode === "Control") {
+                onOpenControlMode();
+                return;
+              }
+
+              if (item.mode === "Math") {
+                onOpenMathMode();
+                return;
+              }
+
+              if (item.view) {
+                onOpenTool(item.view);
+              }
             }}
           >
             <span className="sidebar-nav-icon" aria-hidden="true">
-              {item.id === "new" ? "+" : item.id === "research" ? "?" : item.id === "build" ? "<>" : "@"}
+              {item.id === "home"
+                ? ">"
+                : item.id === "control"
+                ? "C"
+                : item.id === "math"
+                ? "M"
+                : item.id === "flashcards"
+                ? "F"
+                : item.id === "slides"
+                ? "S"
+                : "U"}
             </span>
-            <span>{item.label}</span>
+            {!collapsed && <span>{item.label}</span>}
           </button>
         ))}
       </div>
 
-      <div className="sidebar-section-head">
-        <div className="section-label">Workspaces</div>
-      </div>
-      <div className="mode-list sidebar-mode-list">
-        {modes.map((item) => (
-          <button
-            key={item}
-            className={mode === item && activeView === "chat" ? "active" : ""}
-            onClick={() => setMode(item)}
-          >
-            <strong>{item}</strong>
-            <span>{MODE_META[item]}</span>
-          </button>
-        ))}
-      </div>
-
-      <div className="sidebar-section-head">
-        <div className="section-label">Study Tools</div>
-      </div>
-      <div className="tool-list">
-        <button className={activeView === "flashcards" ? "active" : ""} onClick={() => onOpenTool("flashcards")}>
-          <strong>Flashcards</strong>
-          <span>Study sets and drills</span>
-        </button>
-        <button className={activeView === "slides" ? "active" : ""} onClick={() => onOpenTool("slides")}>
-          <strong>Slides</strong>
-          <span>Decks, themes, and notes</span>
-        </button>
-      </div>
-
-      <div className="sidebar-section-head threads-head">
-        <div className="section-label">Threads</div>
-      </div>
-
-      <div className="sidebar-project-card">
-        <div className="sidebar-project-icon" aria-hidden="true">
-          /&gt;
+      {!collapsed && (
+        <div className="sidebar-section-head threads-head">
+          <div className="section-label">Recent chats</div>
         </div>
-        <div>
-          <div className="sidebar-project-title">student-helper</div>
-          <div className="sidebar-project-subtitle">Persistent local workspace</div>
-        </div>
-      </div>
+      )}
 
       <div className="chat-list">
         {visibleConversations.map((conversation) => (
           <button
             key={conversation.id}
+            type="button"
             className={`chat-item ${conversation.id === activeId ? "active" : ""}`}
+            title={conversation.title || "New chat"}
             onClick={() => onSelectConversation(conversation.id)}
             onContextMenu={(event) => {
               event.preventDefault();
@@ -165,34 +218,39 @@ function Sidebar({
             }}
           >
             <div className="chat-item-top">
-              <div className="chat-title">{conversation.title || "New chat"}</div>
-              <span className="chat-time">{formatRelativeTime(conversation.updatedAt)}</span>
+              {!collapsed && (
+                <>
+                  <div className="chat-title">{conversation.title || "New chat"}</div>
+                  <span className="chat-time">{formatRelativeTime(conversation.updatedAt)}</span>
+                </>
+              )}
+              {collapsed && <div className="chat-thread-index">{(conversation.title || "New chat").slice(0, 1)}</div>}
             </div>
-            <div className="chat-preview">
-              {(conversation.messages?.[conversation.messages.length - 1]?.content ||
-                MODE_META[conversation.mode] ||
-                "A fresh thread is ready.")
-                .slice(0, 90)
-                .replace(/\s+/g, " ")}
-            </div>
+            {!collapsed && <div className="chat-preview">{getPreviewText(conversation)}</div>}
           </button>
         ))}
       </div>
 
-      {conversations.length > 5 && (
+      {conversations.length > 12 && !collapsed && (
         <button className="sidebar-show-more" onClick={() => setShowAllThreads((current) => !current)}>
           {showAllThreads ? "Show less" : "Show more"}
         </button>
       )}
 
-      <button className="sidebar-plan-button" onClick={onOpenBilling}>
-        <span>{planTitle}</span>
-        <strong>{planSummary}</strong>
-      </button>
-
-      <button className="sidebar-settings-btn" onClick={onOpenBilling}>
-        Settings
-      </button>
+      <div className="sidebar-footer">
+        {!collapsed && (
+          <div className="sidebar-plan-summary">
+            <div className="section-label">Account</div>
+            <strong>{planLabel}</strong>
+          </div>
+        )}
+        <button type="button" className="sidebar-footer-btn" onClick={() => onOpenTool("update")} title="Update Version">
+          <span className="sidebar-nav-icon" aria-hidden="true">
+            U
+          </span>
+          {!collapsed && <span>Update Version</span>}
+        </button>
+      </div>
     </aside>
   );
 }

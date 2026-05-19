@@ -1,43 +1,292 @@
-function renderLine(line, index) {
-  if (/^\*\*.+\*\*$/.test(line)) {
-    return (
-      <div key={`${line}-${index}`} className="message-heading">
-        {line.replace(/^\*\*|\*\*$/g, "")}
-      </div>
-    );
+import { Fragment, useMemo, useState } from "react";
+
+function renderInline(text) {
+  const source = String(text || "");
+  const tokens = [];
+  const pattern = /(`[^`]+`)|(\[([^\]]+)\]\((https?:\/\/[^\s)]+)\))|(https?:\/\/[^\s]+)/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = pattern.exec(source))) {
+    if (match.index > lastIndex) {
+      tokens.push(source.slice(lastIndex, match.index));
+    }
+
+    if (match[1]) {
+      tokens.push(
+        <code key={`${match.index}-code`} className="message-inline-code">
+          {match[1].slice(1, -1)}
+        </code>,
+      );
+    } else if (match[2]) {
+      tokens.push(
+        <a
+          key={`${match.index}-link`}
+          className="message-link"
+          href={match[4]}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {match[3]}
+        </a>,
+      );
+    } else if (match[5]) {
+      tokens.push(
+        <a
+          key={`${match.index}-url`}
+          className="message-link"
+          href={match[5]}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {match[5]}
+        </a>,
+      );
+    }
+
+    lastIndex = pattern.lastIndex;
   }
 
-  if (/^\d+\.\s+/.test(line)) {
-    const [, number, text] = line.match(/^(\d+)\.\s+(.*)$/) || [];
-    return (
-      <div key={`${line}-${index}`} className="message-numbered">
-        <span>{number}</span>
-        <p>{text || "\u00A0"}</p>
-      </div>
-    );
+  if (lastIndex < source.length) {
+    tokens.push(source.slice(lastIndex));
   }
 
-  if (line.startsWith("- ")) {
-    return (
-      <div key={`${line}-${index}`} className="message-bullet">
-        {line.replace(/^- /, "")}
-      </div>
-    );
+  return tokens.length ? tokens.map((token, index) => <Fragment key={index}>{token}</Fragment>) : source;
+}
+
+function parseMessageBlocks(content) {
+  const lines = String(content || "").replace(/\r/g, "").split("\n");
+  const blocks = [];
+  let index = 0;
+
+  while (index < lines.length) {
+    const line = lines[index];
+
+    if (!line.trim()) {
+      index += 1;
+      continue;
+    }
+
+    if (line.trimStart().startsWith("```")) {
+      const language = line.trim().slice(3).trim() || "text";
+      const codeLines = [];
+      index += 1;
+
+      while (index < lines.length && !lines[index].trimStart().startsWith("```")) {
+        codeLines.push(lines[index]);
+        index += 1;
+      }
+
+      if (index < lines.length) {
+        index += 1;
+      }
+
+      blocks.push({
+        type: "code",
+        language,
+        value: codeLines.join("\n"),
+      });
+      continue;
+    }
+
+    if (/^#{1,6}\s+/.test(line)) {
+      const [, hashes, text] = line.match(/^(#{1,6})\s+(.*)$/) || [];
+      blocks.push({
+        type: "heading",
+        level: Math.min(4, hashes?.length || 1),
+        text,
+      });
+      index += 1;
+      continue;
+    }
+
+    if (/^\s*>\s?/.test(line)) {
+      const quoteLines = [];
+
+      while (index < lines.length && /^\s*>\s?/.test(lines[index])) {
+        quoteLines.push(lines[index].replace(/^\s*>\s?/, ""));
+        index += 1;
+      }
+
+      blocks.push({
+        type: "quote",
+        value: quoteLines.join(" "),
+      });
+      continue;
+    }
+
+    if (/^\s*[-*]\s+/.test(line)) {
+      const items = [];
+
+      while (index < lines.length && /^\s*[-*]\s+/.test(lines[index])) {
+        items.push(lines[index].replace(/^\s*[-*]\s+/, ""));
+        index += 1;
+      }
+
+      blocks.push({
+        type: "unordered-list",
+        items,
+      });
+      continue;
+    }
+
+    if (/^\s*\d+\.\s+/.test(line)) {
+      const items = [];
+
+      while (index < lines.length && /^\s*\d+\.\s+/.test(lines[index])) {
+        items.push(lines[index].replace(/^\s*\d+\.\s+/, ""));
+        index += 1;
+      }
+
+      blocks.push({
+        type: "ordered-list",
+        items,
+      });
+      continue;
+    }
+
+    const paragraphLines = [];
+
+    while (
+      index < lines.length &&
+      lines[index].trim() &&
+      !lines[index].trimStart().startsWith("```") &&
+      !/^#{1,6}\s+/.test(lines[index]) &&
+      !/^\s*>\s?/.test(lines[index]) &&
+      !/^\s*[-*]\s+/.test(lines[index]) &&
+      !/^\s*\d+\.\s+/.test(lines[index])
+    ) {
+      paragraphLines.push(lines[index]);
+      index += 1;
+    }
+
+    blocks.push({
+      type: "paragraph",
+      value: paragraphLines.join(" "),
+    });
   }
 
-  return <p key={`${line}-${index}`}>{line || "\u00A0"}</p>;
+  return blocks;
+}
+
+function CodeBlock({ language, value }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="message-code-block">
+      <div className="code-block-header">
+        <span className="code-block-language">{language}</span>
+        <button type="button" className="code-block-copy" onClick={copy}>
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre>
+        <code>{value}</code>
+      </pre>
+    </div>
+  );
 }
 
 function Message({ role, content, isStreaming = false }) {
-  const blocks = String(content || "")
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line, index, items) => line || items[index - 1]);
+  const blocks = useMemo(() => parseMessageBlocks(content), [content]);
+  const [copied, setCopied] = useState(false);
+  const isAssistant = role === "assistant";
+  const author = isAssistant ? "Helper AI" : "You";
+
+  const copyMessage = async () => {
+    try {
+      await navigator.clipboard.writeText(String(content || ""));
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   return (
-    <div className={`message ${role} ${isStreaming ? "streaming" : ""}`}>
-      <div className="message-content">{blocks.map((line, index) => renderLine(line, index))}</div>
-    </div>
+    <article className={`message ${role} ${isStreaming ? "streaming" : ""}`}>
+      <div className="message-row">
+        {isAssistant && (
+          <div className="message-avatar" aria-hidden="true">
+            AI
+          </div>
+        )}
+
+        <div className="message-stack">
+          <div className="message-meta">
+            <span className="message-author">{author}</span>
+            <div className="message-toolbar">
+              <button type="button" className="message-copy-btn" onClick={copyMessage}>
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </div>
+
+          <div className="message-surface">
+            <div className="message-content">
+              {blocks.map((block, index) => {
+                if (block.type === "heading") {
+                  const Tag = `h${block.level}`;
+                  return (
+                    <Tag key={index} className={`message-block message-heading-h${block.level}`}>
+                      {renderInline(block.text)}
+                    </Tag>
+                  );
+                }
+
+                if (block.type === "quote") {
+                  return (
+                    <blockquote key={index} className="message-block message-quote">
+                      {renderInline(block.value)}
+                    </blockquote>
+                  );
+                }
+
+                if (block.type === "unordered-list") {
+                  return (
+                    <ul key={index} className="message-block message-list">
+                      {block.items.map((item, itemIndex) => (
+                        <li key={itemIndex}>{renderInline(item)}</li>
+                      ))}
+                    </ul>
+                  );
+                }
+
+                if (block.type === "ordered-list") {
+                  return (
+                    <ol key={index} className="message-block message-list message-list-ordered">
+                      {block.items.map((item, itemIndex) => (
+                        <li key={itemIndex}>{renderInline(item)}</li>
+                      ))}
+                    </ol>
+                  );
+                }
+
+                if (block.type === "code") {
+                  return <CodeBlock key={index} language={block.language} value={block.value} />;
+                }
+
+                return (
+                  <p key={index} className="message-block message-paragraph">
+                    {renderInline(block.value)}
+                  </p>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      </div>
+    </article>
   );
 }
 

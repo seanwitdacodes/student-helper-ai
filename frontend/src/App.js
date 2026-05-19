@@ -10,86 +10,12 @@ import "./App.css";
 
 const API_BASE = "http://localhost:5050";
 const ACCOUNT_STORAGE_KEY = "studentHelperAccount";
-const PROJECT_HANDLE = "student-helper";
 const TRIAL_LENGTH_DAYS = 7;
 const TRIAL_LENGTH_MS = TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000;
-
-const MODEL_OPTIONS = [
-  { value: "max", label: "Local Max" },
-  { value: "fast", label: "Local Fast" },
-  { value: "builder", label: "Builder" },
-];
-
-const REASONING_OPTIONS = [
-  { value: "fast", label: "Fast" },
-  { value: "balanced", label: "Balanced" },
-  { value: "deep", label: "Deep" },
-];
-
-const MODE_DETAILS = {
-  Answer: {
-    label: "Answer",
-    summary: "Direct responses when you want the quickest correct answer.",
-  },
-  Tutor: {
-    label: "Tutor",
-    summary: "Step-by-step explanations with examples and teaching tone.",
-  },
-  Build: {
-    label: "Build",
-    summary: "UI, product, prompt, and implementation help in one workspace.",
-  },
-  Research: {
-    label: "Research",
-    summary: "Organize findings, compare options, and draft report-style outputs.",
-  },
-  Automation: {
-    label: "Automation",
-    summary: "Design recurring workflows, task flows, and operational prompts.",
-  },
-  Math: {
-    label: "Math",
-    summary: "Camera-first math solving with full worked steps.",
-  },
-};
-
-const WELCOME_CAPABILITIES = [
-  {
-    title: "Reasoning and Analysis",
-    detail: "Switch between fast and deep thinking with a live context meter for each thread.",
-    tags: ["Deep reasoning", "Context aware", "Multi-step output"],
-  },
-  {
-    title: "Coding and Product Build",
-    detail: "Use Build mode for features, prompt systems, UI planning, and implementation help.",
-    tags: ["Product design", "Coding help", "Prompt systems"],
-  },
-  {
-    title: "Multimodal and Files",
-    detail: "Upload screenshots, solve from images, and turn notes into flashcards or slides.",
-    tags: ["Vision", "Flashcards", "Slides"],
-  },
-  {
-    title: "Research and Reports",
-    detail: "Draft structured research-style answers with tradeoffs, assumptions, and next steps.",
-    tags: ["Comparisons", "Reports", "Decision support"],
-  },
-  {
-    title: "Automation Workflows",
-    detail: "Map automations, recurring tasks, agent flows, and plugin-style integrations.",
-    tags: ["Workflows", "Integrations", "Task design"],
-  },
-  {
-    title: "Persistent Project Memory",
-    detail: "Keep threads, modes, and tool outputs inside one project-like desktop workspace.",
-    tags: ["Threads", "Saved history", "Project context"],
-  },
-];
 
 const defaultAssistantState = {
   model: "max",
   reasoning: "deep",
-  showIntegrationHint: true,
 };
 
 const defaultFlashcardsState = {
@@ -177,15 +103,17 @@ function hasPremiumAccess(tier) {
 }
 
 function getPlanLabel(tier) {
-  if (tier === "trial") return "Trial";
-  if (tier === "pro") return "Max";
-  return "Starter";
+  if (tier === "pro") return "Full Version";
+  if (tier === "trial") return "Free Trial";
+  return "Free Plan";
 }
 
 function getDefaultConversationTitle(mode = "Build", view = "chat") {
   if (view === "flashcards") return "Flashcards";
   if (view === "slides") return "Slides";
+  if (view === "update") return "Update version";
   if (mode === "Math") return "Math Solver";
+  if (mode === "Control") return "Control Computer Mode";
   return "New chat";
 }
 
@@ -196,8 +124,10 @@ function isDefaultConversationTitle(title, mode = "Build", view = "chat") {
     "new chat",
     "new chat",
     "math solver",
+    "control computer mode",
     "flashcards",
     "slides",
+    "update version",
   ]);
   return defaults.has(normalizedTitle);
 }
@@ -221,17 +151,6 @@ function normalizeAccount(value) {
         ? value.paymentMethod
         : null,
   };
-}
-
-function estimateMessageTokens(messages) {
-  const text = (messages || []).map((message) => String(message?.content || "")).join("\n");
-  if (!text.trim()) return 0;
-  return Math.ceil(text.length / 4);
-}
-
-function getContextBudget(tier, assistant) {
-  const base = tier === "free" ? 4096 : 8192;
-  return assistant?.reasoning === "deep" ? base + 2048 : base;
 }
 
 function normalizeConversation(conversation) {
@@ -280,6 +199,54 @@ function makeTitle(text, fallback = "New chat") {
   return cleaned.slice(0, 52) || fallback;
 }
 
+function getWorkspaceMeta(activeView, activeMode, conversation) {
+  if (activeView === "flashcards") {
+    return {
+      eyebrow: "Study tool",
+      title: conversation?.flashcards?.deckTitle || "Flashcards",
+      summary: "Build decks, review terms, and drill recall with a focused study flow.",
+    };
+  }
+
+  if (activeView === "slides") {
+    return {
+      eyebrow: "Study tool",
+      title: conversation?.slides?.title || "Slides",
+      summary: "Draft, refine, and organize slide content with a structured editor.",
+    };
+  }
+
+  if (activeView === "update") {
+    return {
+      eyebrow: "Settings",
+      title: "Update Version",
+      summary: "Manage plan access and unlock premium workspace features.",
+    };
+  }
+
+  if (activeMode === "Math") {
+    return {
+      eyebrow: "Math",
+      title: "Math Solver",
+      summary: "Upload or type a problem to get a worked solution with history.",
+    };
+  }
+
+  if (activeMode === "Control") {
+    return {
+      eyebrow: "Computer control",
+      title: "Control Computer Mode",
+      summary: "Use chat to map tasks, commands, and guided computer workflows.",
+    };
+  }
+
+  return {
+    eyebrow: "Conversation",
+    title: conversation?.messages?.length ? conversation?.title || "New chat" : "Helper AI",
+    summary: "A minimal, streaming-first AI workspace for questions, notes, and ideas.",
+  };
+}
+
 function App() {
   const [conversations, setConversations] = useState(() => {
     const raw = localStorage.getItem("chatHistory");
@@ -306,7 +273,8 @@ function App() {
       return defaultAccountState;
     }
   });
-  const [isBillingOpen, setIsBillingOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!activeId && conversations.length > 0) {
@@ -373,26 +341,12 @@ function App() {
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeId) || conversations[0];
   const tier = hasPremiumAccess(account.tier) ? account.tier : "free";
-  const planLabel = getPlanLabel(tier);
-  const planActionLabel = tier === "free" ? "Upgrade" : "Manage";
+  const planLabel = getPlanLabel(account.tier);
 
   const orderedConversations = useMemo(
     () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
     [conversations],
   );
-
-  const contextStats = useMemo(() => {
-    const assistant = activeConversation?.assistant || defaultAssistantState;
-    const budget = getContextBudget(tier, assistant);
-    const used = estimateMessageTokens(activeConversation?.messages || []);
-    const percent = budget > 0 ? Math.min(100, Math.round((used / budget) * 100)) : 0;
-
-    return {
-      used,
-      budget,
-      percent,
-    };
-  }, [activeConversation, tier]);
 
   const updateConversation = (id, updater) => {
     setConversations((previous) =>
@@ -402,34 +356,36 @@ function App() {
     );
   };
 
-  const updateAssistant = (patch) => {
-    if (!activeConversation) return;
-
-    updateConversation(activeConversation.id, (conversation) => ({
-      ...conversation,
-      assistant: { ...conversation.assistant, ...patch },
-      updatedAt: Date.now(),
-    }));
-  };
-
   const createAndFocusConversation = (mode = activeConversation?.mode || "Build", view = "chat") => {
     const fresh = createConversation(mode, view);
     setConversations((previous) => [fresh, ...previous]);
     setActiveId(fresh.id);
   };
 
-  const resetConversationMode = (nextMode) => {
-    if (!activeConversation) return;
+  const openChatMode = (nextMode) => {
+    if (activeConversation?.view === "chat" && (activeConversation.messages || []).length === 0) {
+      updateConversation(activeConversation.id, (conversation) => ({
+        ...conversation,
+        mode: nextMode,
+        view: "chat",
+        title: getDefaultConversationTitle(nextMode, "chat"),
+        math: { ...defaultMathState },
+        updatedAt: Date.now(),
+      }));
+      return;
+    }
 
-    updateConversation(activeConversation.id, (conversation) => ({
-      ...conversation,
-      mode: nextMode,
-      view: "chat",
-      title: getDefaultConversationTitle(nextMode, "chat"),
-      messages: [],
-      math: { ...defaultMathState },
-      updatedAt: Date.now(),
-    }));
+    createAndFocusConversation(nextMode, "chat");
+  };
+
+  const openToolView = (view) => {
+    const existingConversation = orderedConversations.find((conversation) => conversation.view === view);
+    if (existingConversation) {
+      setActiveId(existingConversation.id);
+      return;
+    }
+
+    createAndFocusConversation(activeConversation?.mode || "Build", view);
   };
 
   const sendMessage = async (text) => {
@@ -670,37 +626,50 @@ function App() {
 
   const activeView = activeConversation?.view || "chat";
   const activeMode = activeConversation?.mode || "Build";
-  const assistant = activeConversation?.assistant || defaultAssistantState;
-  const workspaceLabel =
-    activeView === "chat" ? MODE_DETAILS[activeMode]?.label || activeMode : activeView === "flashcards" ? "Flashcards" : "Slides";
-  const workspaceTitle =
-    activeView === "chat"
-      ? activeConversation?.title || "New chat"
-      : activeView === "flashcards"
-      ? activeConversation?.flashcards?.deckTitle || "Flashcards"
-      : activeConversation?.slides?.title || "Slides";
-  const workspaceSummary =
-    activeView === "chat"
-      ? MODE_DETAILS[activeMode]?.summary || "A desktop workspace for study, building, and AI-assisted tasks."
-      : activeView === "flashcards"
-      ? "Generate study decks, quiz yourself, and drill recall."
-      : "Draft, theme, and refine presentation-ready slide decks.";
-  const modelLabel = MODEL_OPTIONS.find((item) => item.value === assistant.model)?.label || "Local Max";
-  const reasoningLabel = REASONING_OPTIONS.find((item) => item.value === assistant.reasoning)?.label || "Deep";
+  const isCenteredChat = activeView === "chat" && activeMode !== "Math" && (activeConversation?.messages || []).length === 0;
+  const workspaceMeta = getWorkspaceMeta(activeView, activeMode, activeConversation);
 
   return (
-    <div className="layout">
+    <div className={`layout ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      <div
+        className={`sidebar-backdrop ${isSidebarOpen ? "is-visible" : ""}`}
+        onClick={() => setIsSidebarOpen(false)}
+        aria-hidden="true"
+      />
+
       <Sidebar
         mode={activeMode}
         activeView={activeView}
         account={account}
         conversations={orderedConversations}
         activeId={activeConversation?.id}
-        setMode={resetConversationMode}
-        onOpenBilling={() => setIsBillingOpen(true)}
-        onSelectConversation={setActiveId}
-        onNewConversation={() => createAndFocusConversation(activeConversation?.mode || "Build")}
-        onOpenTool={(tool) => createAndFocusConversation(activeConversation?.mode || "Build", tool)}
+        collapsed={isSidebarCollapsed}
+        isOpen={isSidebarOpen}
+        onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
+        onOpenHome={() => {
+          openChatMode("Build");
+          setIsSidebarOpen(false);
+        }}
+        onOpenControlMode={() => {
+          openChatMode("Control");
+          setIsSidebarOpen(false);
+        }}
+        onOpenMathMode={() => {
+          openChatMode("Math");
+          setIsSidebarOpen(false);
+        }}
+        onSelectConversation={(id) => {
+          setActiveId(id);
+          setIsSidebarOpen(false);
+        }}
+        onNewConversation={() => {
+          createAndFocusConversation(activeConversation?.mode || "Build");
+          setIsSidebarOpen(false);
+        }}
+        onOpenTool={(view) => {
+          openToolView(view);
+          setIsSidebarOpen(false);
+        }}
         onDeleteConversation={(id) => {
           setConversations((previous) => {
             const next = previous.filter((conversation) => conversation.id !== id);
@@ -718,82 +687,71 @@ function App() {
       />
 
       <div className="chat-area">
-        <div className="workspace-header">
-          <div className="workspace-title-block">
-            <div className="workspace-eyebrow">{workspaceLabel}</div>
-            <div className="workspace-title-row">
-              <h1>{workspaceTitle}</h1>
-              <span className="workspace-plan-pill">{planLabel}</span>
+        <header className="app-header">
+          <div className="header-start">
+            <button
+              type="button"
+              className="header-menu-btn"
+              onClick={() => {
+                setIsSidebarCollapsed(false);
+                setIsSidebarOpen(true);
+              }}
+              aria-label="Open sidebar"
+            >
+              Menu
+            </button>
+            <div className="header-copy">
+              <div className="header-eyebrow">{workspaceMeta.eyebrow}</div>
+              <h1>{workspaceMeta.title}</h1>
+              <p className="header-summary">{workspaceMeta.summary}</p>
             </div>
-            <p className="workspace-summary">{workspaceSummary}</p>
           </div>
 
-          <div className="workspace-actions">
-            <span className="workspace-stat-pill">{modelLabel}</span>
-            <span className="workspace-stat-pill">{reasoningLabel} reasoning</span>
-            <span className="workspace-stat-pill">
-              {contextStats.used}/{contextStats.budget} tokens
-            </span>
-            <button className="quiet-btn" onClick={() => setIsBillingOpen(true)}>
-              {planActionLabel}
-            </button>
-            <button
-              className="quiet-btn"
-              onClick={() =>
-                activeView === "chat"
-                  ? createAndFocusConversation(activeConversation?.mode || "Build")
-                  : createAndFocusConversation(activeConversation?.mode || "Build", activeView)
-              }
-            >
-              New
+          <div className="header-actions">
+            <span className="header-pill">{planLabel}</span>
+            <button type="button" className="quiet-btn" onClick={() => openToolView("update")}>
+              Update
             </button>
           </div>
-        </div>
+        </header>
 
         {activeView === "chat" && activeMode !== "Math" && (
-          <>
-            <ChatWindow
-              mode={activeMode}
-              messages={activeConversation?.messages || []}
-              projectName={PROJECT_HANDLE}
-              assistant={assistant}
-              contextStats={contextStats}
-              capabilities={WELCOME_CAPABILITIES}
-              onUsePrompt={sendMessage}
-              onDismissIntegrationHint={() => updateAssistant({ showIntegrationHint: false })}
-            />
+          <div className={`chat-screen ${isCenteredChat ? "is-centered" : ""}`}>
+            <ChatWindow mode={activeMode} messages={activeConversation?.messages || []} />
             <ChatInput
               mode={activeMode}
-              assistant={assistant}
-              contextStats={contextStats}
-              onAssistantChange={updateAssistant}
+              centered={isCenteredChat}
               onSend={sendMessage}
               onSendImage={sendImageMessage}
             />
-          </>
+            <div className="app-footer">Helper AI can make mistakes. Check important answers.</div>
+          </div>
         )}
 
         {activeView === "chat" && activeMode === "Math" && (
-          <MathWorkspace
-            state={activeConversation.math || defaultMathState}
-            plan={tier}
-            onOpenBilling={() => setIsBillingOpen(true)}
-            onChange={(next) =>
-              updateConversation(activeConversation.id, (conversation) => ({
-                ...conversation,
-                math: next,
-                updatedAt: Date.now(),
-              }))
-            }
-            onSolve={solveMath}
-          />
+          <>
+            <MathWorkspace
+              state={activeConversation.math || defaultMathState}
+              plan={tier}
+              onOpenBilling={() => openToolView("update")}
+              onChange={(next) =>
+                updateConversation(activeConversation.id, (conversation) => ({
+                  ...conversation,
+                  math: next,
+                  updatedAt: Date.now(),
+                }))
+              }
+              onSolve={solveMath}
+            />
+            <div className="app-footer">Helper AI can make mistakes. Check important answers.</div>
+          </>
         )}
 
         {activeView === "flashcards" && (
           <Flashcards
             state={activeConversation.flashcards || defaultFlashcardsState}
             plan={tier}
-            onOpenBilling={() => setIsBillingOpen(true)}
+            onOpenBilling={() => openToolView("update")}
             onChange={(next) =>
               updateConversation(activeConversation.id, (conversation) => ({
                 ...conversation,
@@ -812,7 +770,7 @@ function App() {
           <Slides
             state={activeConversation.slides || defaultSlidesState}
             plan={tier}
-            onOpenBilling={() => setIsBillingOpen(true)}
+            onOpenBilling={() => openToolView("update")}
             onChange={(next) =>
               updateConversation(activeConversation.id, (conversation) => ({
                 ...conversation,
@@ -827,61 +785,51 @@ function App() {
           />
         )}
 
-        <div className="workspace-footer">
-          <span>Local workspace</span>
-          <span>{activeView === "chat" ? `${activeMode} mode` : workspaceLabel}</span>
-          <span>{modelLabel}</span>
-          <span>{reasoningLabel} reasoning</span>
-          <span>{contextStats.percent}% context used</span>
-        </div>
+        {activeView === "update" && (
+          <BillingModal
+            inline
+            account={account}
+            trialLengthDays={TRIAL_LENGTH_DAYS}
+            onClose={() => {}}
+            onStartTrial={() => {
+              const now = Date.now();
+              setAccount(
+                normalizeAccount({
+                  ...account,
+                  tier: "trial",
+                  hasUsedTrial: true,
+                  startedTrialAt: account.startedTrialAt || now,
+                  trialEndsAt: now + TRIAL_LENGTH_MS,
+                  paymentMethod: null,
+                  updatedAt: now,
+                }),
+              );
+            }}
+            onUpgrade={(paymentMethod) => {
+              setAccount(
+                normalizeAccount({
+                  ...account,
+                  tier: "pro",
+                  paymentMethod,
+                  trialEndsAt: 0,
+                  updatedAt: Date.now(),
+                }),
+              );
+            }}
+            onDowngrade={() => {
+              setAccount(
+                normalizeAccount({
+                  ...account,
+                  tier: "free",
+                  paymentMethod: null,
+                  trialEndsAt: 0,
+                  updatedAt: Date.now(),
+                }),
+              );
+            }}
+          />
+        )}
       </div>
-
-      {isBillingOpen && (
-        <BillingModal
-          account={account}
-          trialLengthDays={TRIAL_LENGTH_DAYS}
-          onClose={() => setIsBillingOpen(false)}
-          onStartTrial={() => {
-            const now = Date.now();
-            setAccount(
-              normalizeAccount({
-                ...account,
-                tier: "trial",
-                hasUsedTrial: true,
-                startedTrialAt: account.startedTrialAt || now,
-                trialEndsAt: now + TRIAL_LENGTH_MS,
-                paymentMethod: null,
-                updatedAt: now,
-              }),
-            );
-            setIsBillingOpen(false);
-          }}
-          onUpgrade={(paymentMethod) => {
-            setAccount(
-              normalizeAccount({
-                ...account,
-                tier: "pro",
-                paymentMethod,
-                trialEndsAt: 0,
-                updatedAt: Date.now(),
-              }),
-            );
-            setIsBillingOpen(false);
-          }}
-          onDowngrade={() => {
-            setAccount(
-              normalizeAccount({
-                ...account,
-                tier: "free",
-                paymentMethod: null,
-                trialEndsAt: 0,
-                updatedAt: Date.now(),
-              }),
-            );
-            setIsBillingOpen(false);
-          }}
-        />
-      )}
     </div>
   );
 }
