@@ -2,11 +2,10 @@ import { useEffect, useMemo, useRef } from "react";
 import Message from "./Message";
 
 const LEGACY_WELCOME_MESSAGES = new Set([
-  "Flashcards workspace ready. Generate a deck or build one from scratch.",
-  "Slides workspace ready. Draft your deck, theme it, and present it.",
   "Math Mode is ready. Upload a problem or type one to get a step-by-step solution.",
   "Tutor Mode is ready. Ask anything and I’ll explain it step by step.",
   "Answer Mode is ready. Ask a question for a direct response.",
+  "Control Computer Mode is ready.",
 ]);
 
 function ChatWindow({
@@ -27,8 +26,8 @@ function ChatWindow({
   );
   const showWelcome = visibleMessages.length === 0;
   const subtitle =
-    mode === "Control"
-      ? "Tell Helper AI what you want to do on your computer."
+    mode === "computer"
+      ? "Describe the task, command, or app workflow you want help with."
       : "Ask anything to get started.";
 
   useEffect(() => {

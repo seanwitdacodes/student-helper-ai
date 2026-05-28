@@ -1,21 +1,17 @@
 import { useMemo, useState } from "react";
 
+const REGULAR_MODE = "regular";
+const COMPUTER_MODE = "computer";
+
 const NAV_ITEMS = [
-  { id: "home", label: "Home", kind: "chat" },
-  { id: "control", label: "Control Computer Mode", kind: "chat", mode: "Control" },
-  { id: "math", label: "Math Solver", kind: "chat", mode: "Math" },
-  { id: "flashcards", label: "Flashcards", kind: "view", view: "flashcards" },
-  { id: "slides", label: "Slides", kind: "view", view: "slides" },
+  { id: "regular", label: "Regular AI", kind: "chat", mode: REGULAR_MODE },
+  { id: "computer", label: "Computer Mode", kind: "chat", mode: COMPUTER_MODE },
   { id: "update", label: "Update Version", kind: "view", view: "update" },
 ];
 
 const MODE_PREVIEW = {
-  Build: "A new chat is ready.",
-  Control: "Control Computer Mode is ready.",
-  Math: "Math Solver is ready.",
-  Tutor: "Tutor Mode is ready.",
-  Research: "Research Mode is ready.",
-  Automation: "Automation Mode is ready.",
+  [REGULAR_MODE]: "Regular AI is ready.",
+  [COMPUTER_MODE]: "Computer Mode is ready.",
 };
 
 function getPlanLabel(tier) {
@@ -65,9 +61,8 @@ function Sidebar({
   collapsed = false,
   isOpen = false,
   onToggleCollapse,
-  onOpenHome,
-  onOpenControlMode,
-  onOpenMathMode,
+  onOpenRegularMode,
+  onOpenComputerMode,
   onSelectConversation,
   onNewConversation,
   onOpenTool,
@@ -81,12 +76,7 @@ function Sidebar({
     () =>
       (showAllThreads ? conversations : conversations.slice(0, 12)).filter((conversation) => {
         if (!normalizedSearch) return true;
-        const haystack = [
-          conversation.title,
-          getPreviewText(conversation),
-        ]
-          .join(" ")
-          .toLowerCase();
+        const haystack = [conversation.title, getPreviewText(conversation)].join(" ").toLowerCase();
         return haystack.includes(normalizedSearch);
       }),
     [conversations, normalizedSearch, showAllThreads],
@@ -103,7 +93,7 @@ function Sidebar({
           {!collapsed && (
             <div className="sidebar-brand-copy">
               <div className="sidebar-brand-title">Helper AI</div>
-              <div className="sidebar-brand-subtitle">Calm, fast AI chat</div>
+              <div className="sidebar-brand-subtitle">Simple, fast local AI</div>
             </div>
           )}
         </div>
@@ -140,7 +130,7 @@ function Sidebar({
 
       {!collapsed && (
         <div className="sidebar-section-head">
-          <div className="section-label">Menu</div>
+          <div className="section-label">Modes</div>
         </div>
       )}
 
@@ -151,25 +141,16 @@ function Sidebar({
             type="button"
             title={item.label}
             className={`sidebar-nav-item ${
-              (item.id === "home" && activeView === "chat" && mode !== "Control" && mode !== "Math") ||
-              (item.mode === mode && activeView === "chat") ||
-              (item.view === activeView)
-                ? "active"
-                : ""
+              (item.mode === mode && activeView === "chat") || item.view === activeView ? "active" : ""
             }`}
             onClick={() => {
-              if (item.id === "home") {
-                onOpenHome();
+              if (item.mode === REGULAR_MODE) {
+                onOpenRegularMode();
                 return;
               }
 
-              if (item.mode === "Control") {
-                onOpenControlMode();
-                return;
-              }
-
-              if (item.mode === "Math") {
-                onOpenMathMode();
+              if (item.mode === COMPUTER_MODE) {
+                onOpenComputerMode();
                 return;
               }
 
@@ -179,17 +160,7 @@ function Sidebar({
             }}
           >
             <span className="sidebar-nav-icon" aria-hidden="true">
-              {item.id === "home"
-                ? ">"
-                : item.id === "control"
-                ? "C"
-                : item.id === "math"
-                ? "M"
-                : item.id === "flashcards"
-                ? "F"
-                : item.id === "slides"
-                ? "S"
-                : "U"}
+              {item.id === "regular" ? "R" : item.id === "computer" ? "C" : "U"}
             </span>
             {!collapsed && <span>{item.label}</span>}
           </button>

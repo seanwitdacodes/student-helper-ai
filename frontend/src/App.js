@@ -2,9 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
-import Flashcards from "./components/Flashcards";
-import Slides from "./components/Slides";
-import MathWorkspace from "./components/MathWorkspace";
 import BillingModal from "./components/BillingModal";
 import "./App.css";
 
@@ -12,78 +9,12 @@ const API_BASE = "http://localhost:5050";
 const ACCOUNT_STORAGE_KEY = "studentHelperAccount";
 const TRIAL_LENGTH_DAYS = 7;
 const TRIAL_LENGTH_MS = TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000;
-
-const defaultAssistantState = {
-  model: "max",
-  reasoning: "deep",
-};
-
-const defaultFlashcardsState = {
-  deckTitle: "",
-  deckDescription: "",
-  notes: "",
-  rawCards: "",
-  importText: "",
-  exportText: "",
-  cards: [],
-  mode: "flashcards",
-  promptSide: "term",
-  starredOnly: false,
-  searchTerm: "",
-  studyIndex: 0,
-  index: 0,
-  isFlipped: false,
-  writeInput: "",
-  writeFeedback: "",
-  learnFeedback: "",
-  stats: { correct: 0, attempts: 0, streak: 0, bestStreak: 0 },
-  testQuestions: [],
-  testAnswers: {},
-  testSubmitted: false,
-  matchTokens: [],
-  matchSelected: [],
-  matchMatched: [],
-  matchStartedAt: 0,
-  matchFinishedAt: 0,
-  matchMoves: 0,
-  bestMatchMs: 0,
-  count: 12,
-};
-
-const defaultSlidesState = {
-  title: "Untitled presentation",
-  subtitle: "Pitch, lecture, or lesson deck",
-  theme: "aurora",
-  notes: "",
-  rawSlides: "",
-  outlineText: "",
-  slideCount: 6,
-  canvasItems: [
-    { id: "canvas-1", title: "Hook", body: "What should the audience remember?" },
-    { id: "canvas-2", title: "Evidence", body: "Key facts, proof, or examples" },
-  ],
-  slides: [
-    {
-      title: "Title Slide",
-      subtitle: "Subtitle goes here",
-      bullets: ["Set the context", "State the goal", "Preview the story"],
-      speakerNotes: "",
-      layout: "title-bullets",
-    },
-  ],
-  activeIndex: 0,
-};
-
-const defaultMathState = {
-  question: "",
-  solverResult: null,
-  rawResponse: "",
-  isLoading: false,
-  error: "",
-  history: [],
-  activeHistoryId: null,
-  lastSolvedAt: 0,
-};
+const REGULAR_MODE = "regular";
+const COMPUTER_MODE = "computer";
+const CHAT_MODES = new Set([REGULAR_MODE, COMPUTER_MODE]);
+const LEGACY_COMPUTER_MODES = new Set(["Control", "Automation"]);
+const SUPPORTED_VIEWS = new Set(["chat", "update"]);
+const STREAM_UPDATE_INTERVAL_MS = 48;
 
 const defaultAccountState = {
   tier: "free",
@@ -108,23 +39,31 @@ function getPlanLabel(tier) {
   return "Free Plan";
 }
 
-function getDefaultConversationTitle(mode = "Build", view = "chat") {
-  if (view === "flashcards") return "Flashcards";
-  if (view === "slides") return "Slides";
+function normalizeMode(mode) {
+  if (CHAT_MODES.has(mode)) return mode;
+  if (LEGACY_COMPUTER_MODES.has(mode)) return COMPUTER_MODE;
+  return REGULAR_MODE;
+}
+
+function getDefaultConversationTitle(mode = REGULAR_MODE, view = "chat") {
   if (view === "update") return "Update version";
-  if (mode === "Math") return "Math Solver";
-  if (mode === "Control") return "Control Computer Mode";
+  if (mode === COMPUTER_MODE) return "Computer Mode";
   return "New chat";
 }
 
-function isDefaultConversationTitle(title, mode = "Build", view = "chat") {
+function isDefaultConversationTitle(title, mode = REGULAR_MODE, view = "chat") {
   const normalizedTitle = String(title || "").trim().toLowerCase();
   const defaults = new Set([
     getDefaultConversationTitle(mode, view).toLowerCase(),
     "new chat",
-    "new chat",
-    "math solver",
+    "regular ai",
+    "computer mode",
     "control computer mode",
+    "math solver",
+    "answer mode",
+    "tutor mode",
+    "research mode",
+    "automation mode",
     "flashcards",
     "slides",
     "update version",
@@ -154,39 +93,38 @@ function normalizeAccount(value) {
 }
 
 function normalizeConversation(conversation) {
-  const view = conversation.view || "chat";
-  const flashcards = { ...defaultFlashcardsState, ...(conversation.flashcards || {}) };
-
-  if (!["flashcards", "learn", "write", "test", "match"].includes(flashcards.mode)) {
-    flashcards.mode = "flashcards";
-  }
+  const source = conversation && typeof conversation === "object" ? conversation : {};
+  const {
+    assistant: _assistant,
+    flashcards: _flashcards,
+    math: _math,
+    slides: _slides,
+    ...rest
+  } = source;
+  const storedView = typeof rest.view === "string" ? rest.view : "chat";
+  const view = SUPPORTED_VIEWS.has(storedView) ? storedView : "chat";
+  const mode = normalizeMode(rest.mode);
+  const fallbackTitle = getDefaultConversationTitle(mode, view);
+  const title = isDefaultConversationTitle(rest.title, mode, storedView) ? fallbackTitle : rest.title || fallbackTitle;
 
   return {
-    ...conversation,
-    mode: conversation.mode || "Build",
+    id: rest.id || uid(),
+    mode,
     view,
-    title: conversation.title || getDefaultConversationTitle(conversation.mode || "Build", view),
-    messages: Array.isArray(conversation.messages) ? conversation.messages : [],
-    assistant: { ...defaultAssistantState, ...(conversation.assistant || {}) },
-    flashcards,
-    slides: { ...defaultSlidesState, ...(conversation.slides || {}) },
-    math: { ...defaultMathState, ...(conversation.math || {}) },
-    createdAt: conversation.createdAt || Date.now(),
-    updatedAt: conversation.updatedAt || Date.now(),
+    title,
+    messages: Array.isArray(rest.messages) ? rest.messages : [],
+    createdAt: Number(rest.createdAt) || Date.now(),
+    updatedAt: Number(rest.updatedAt) || Date.now(),
   };
 }
 
-function createConversation(mode = "Build", view = "chat") {
+function createConversation(mode = REGULAR_MODE, view = "chat") {
   return normalizeConversation({
     id: uid(),
     title: getDefaultConversationTitle(mode, view),
     mode,
     view,
     messages: [],
-    assistant: { ...defaultAssistantState },
-    flashcards: { ...defaultFlashcardsState },
-    slides: { ...defaultSlidesState },
-    math: { ...defaultMathState },
     createdAt: Date.now(),
     updatedAt: Date.now(),
   });
@@ -200,22 +138,6 @@ function makeTitle(text, fallback = "New chat") {
 }
 
 function getWorkspaceMeta(activeView, activeMode, conversation) {
-  if (activeView === "flashcards") {
-    return {
-      eyebrow: "Study tool",
-      title: conversation?.flashcards?.deckTitle || "Flashcards",
-      summary: "Build decks, review terms, and drill recall with a focused study flow.",
-    };
-  }
-
-  if (activeView === "slides") {
-    return {
-      eyebrow: "Study tool",
-      title: conversation?.slides?.title || "Slides",
-      summary: "Draft, refine, and organize slide content with a structured editor.",
-    };
-  }
-
   if (activeView === "update") {
     return {
       eyebrow: "Settings",
@@ -224,26 +146,18 @@ function getWorkspaceMeta(activeView, activeMode, conversation) {
     };
   }
 
-  if (activeMode === "Math") {
+  if (activeMode === COMPUTER_MODE) {
     return {
-      eyebrow: "Math",
-      title: "Math Solver",
-      summary: "Upload or type a problem to get a worked solution with history.",
-    };
-  }
-
-  if (activeMode === "Control") {
-    return {
-      eyebrow: "Computer control",
-      title: "Control Computer Mode",
-      summary: "Use chat to map tasks, commands, and guided computer workflows.",
+      eyebrow: "Computer Mode",
+      title: "Computer Mode",
+      summary: "Use this mode for computer tasks, commands, and step-by-step device help.",
     };
   }
 
   return {
-    eyebrow: "Conversation",
+    eyebrow: "Regular AI",
     title: conversation?.messages?.length ? conversation?.title || "New chat" : "Helper AI",
-    summary: "A minimal, streaming-first AI workspace for questions, notes, and ideas.",
+    summary: "A simple, fast AI chat for questions, writing, notes, and ideas.",
   };
 }
 
@@ -260,7 +174,7 @@ function App() {
         // ignore malformed storage
       }
     }
-    return [createConversation("Build")];
+    return [createConversation()];
   });
 
   const [activeId, setActiveId] = useState(() => localStorage.getItem("chatActiveId") || null);
@@ -283,11 +197,18 @@ function App() {
   }, [activeId, conversations]);
 
   useEffect(() => {
-    localStorage.setItem("chatHistory", JSON.stringify(conversations));
+    const timeoutId = window.setTimeout(() => {
+      localStorage.setItem("chatHistory", JSON.stringify(conversations));
+    }, 180);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [conversations]);
+
+  useEffect(() => {
     if (activeId) {
       localStorage.setItem("chatActiveId", activeId);
     }
-  }, [activeId, conversations]);
+  }, [activeId]);
 
   useEffect(() => {
     localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(account));
@@ -356,7 +277,7 @@ function App() {
     );
   };
 
-  const createAndFocusConversation = (mode = activeConversation?.mode || "Build", view = "chat") => {
+  const createAndFocusConversation = (mode = activeConversation?.mode || REGULAR_MODE, view = "chat") => {
     const fresh = createConversation(mode, view);
     setConversations((previous) => [fresh, ...previous]);
     setActiveId(fresh.id);
@@ -369,7 +290,6 @@ function App() {
         mode: nextMode,
         view: "chat",
         title: getDefaultConversationTitle(nextMode, "chat"),
-        math: { ...defaultMathState },
         updatedAt: Date.now(),
       }));
       return;
@@ -385,7 +305,7 @@ function App() {
       return;
     }
 
-    createAndFocusConversation(activeConversation?.mode || "Build", view);
+    createAndFocusConversation(activeConversation?.mode || REGULAR_MODE, view);
   };
 
   const sendMessage = async (text) => {
@@ -394,6 +314,8 @@ function App() {
     const convoId = activeConversation.id;
     const title = makeTitle(text);
     const assistantId = uid();
+    const mode = activeConversation.mode;
+
     updateConversation(convoId, (conversation) => ({
       ...conversation,
       title: isDefaultConversationTitle(conversation.title, conversation.mode, conversation.view)
@@ -413,9 +335,8 @@ function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: text,
-          mode: activeConversation.mode,
+          mode,
           tier,
-          assistant: activeConversation.assistant,
           stream: true,
         }),
       });
@@ -431,44 +352,38 @@ function App() {
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
       let assistantText = "";
+      let lastRenderAt = 0;
 
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        assistantText += decoder.decode(value, { stream: true });
-        const nextAssistantText = assistantText;
-
+      const paintAssistantMessage = (isStreaming) => {
         updateConversation(convoId, (conversation) => ({
           ...conversation,
           messages: conversation.messages.map((message) =>
             message.id === assistantId
               ? {
                   ...message,
-                  content: nextAssistantText || "Thinking...",
-                  isStreaming: true,
+                  content: assistantText.trim() || "Thinking...",
+                  isStreaming,
                 }
               : message,
           ),
           updatedAt: Date.now(),
         }));
+      };
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        assistantText += decoder.decode(value, { stream: true });
+
+        if (Date.now() - lastRenderAt >= STREAM_UPDATE_INTERVAL_MS) {
+          lastRenderAt = Date.now();
+          paintAssistantMessage(true);
+        }
       }
 
       assistantText += decoder.decode();
-
-      updateConversation(convoId, (conversation) => ({
-        ...conversation,
-        messages: conversation.messages.map((message) =>
-          message.id === assistantId
-            ? {
-                ...message,
-                content: assistantText.trim() || "No answer returned.",
-                isStreaming: false,
-              }
-            : message,
-        ),
-        updatedAt: Date.now(),
-      }));
+      paintAssistantMessage(false);
     } catch {
       updateConversation(convoId, (conversation) => ({
         ...conversation,
@@ -490,7 +405,9 @@ function App() {
     if (!activeConversation || !image) return;
 
     const convoId = activeConversation.id;
+    const mode = activeConversation.mode;
     const prompt = String(text || "").trim() || "Analyze this image.";
+
     updateConversation(convoId, (conversation) => ({
       ...conversation,
       title: isDefaultConversationTitle(conversation.title, conversation.mode, conversation.view)
@@ -503,9 +420,8 @@ function App() {
     const formData = new FormData();
     formData.append("image", image);
     formData.append("question", prompt);
-    formData.append("mode", activeConversation.mode);
+    formData.append("mode", mode);
     formData.append("tier", tier);
-    formData.append("assistant", JSON.stringify(activeConversation.assistant || defaultAssistantState));
 
     try {
       const res = await fetch(`${API_BASE}/vision`, {
@@ -534,99 +450,9 @@ function App() {
     }
   };
 
-  const solveMath = async ({ question, image }) => {
-    if (!activeConversation) return;
-    if (!String(question || "").trim() && !image) return;
-
-    const convoId = activeConversation.id;
-    const prompt = String(question || "").trim();
-
-    updateConversation(convoId, (conversation) => ({
-      ...conversation,
-      title:
-        conversation.title === getDefaultConversationTitle("Math", "chat")
-          ? makeTitle(prompt, "Math Solver")
-          : conversation.title,
-      math: {
-        ...conversation.math,
-        question: prompt,
-        isLoading: true,
-        error: "",
-      },
-      updatedAt: Date.now(),
-    }));
-
-    const formData = new FormData();
-    if (image) formData.append("image", image);
-    if (prompt) formData.append("question", prompt);
-    formData.append("tier", tier);
-    formData.append("assistant", JSON.stringify(activeConversation.assistant || defaultAssistantState));
-
-    try {
-      const res = await fetch(`${API_BASE}/math-solve`, {
-        method: "POST",
-        body: formData,
-      });
-
-      const data = await res.json();
-      const solution = data.solution || null;
-      const historyItem = solution
-        ? {
-            id: uid(),
-            createdAt: Date.now(),
-            prompt: prompt || solution.detectedProblem || "Math problem",
-            result: solution,
-          }
-        : null;
-
-      updateConversation(convoId, (conversation) => ({
-        ...conversation,
-        messages: solution
-          ? [
-              ...conversation.messages,
-              { id: uid(), role: "user", content: prompt || "Solved from uploaded image." },
-              {
-                id: uid(),
-                role: "assistant",
-                content:
-                  solution.finalAnswer ||
-                  solution.summary ||
-                  "Step-by-step solution added to Math Mode.",
-              },
-            ]
-          : conversation.messages,
-        math: {
-          ...conversation.math,
-          question: prompt,
-          solverResult: solution,
-          rawResponse: data.raw || "",
-          isLoading: false,
-          error: solution ? "" : "The solver returned an empty result.",
-          activeHistoryId: historyItem?.id || conversation.math.activeHistoryId,
-          history: historyItem
-            ? [historyItem, ...(conversation.math.history || [])].slice(0, tier !== "free" ? 20 : 3)
-            : conversation.math.history || [],
-          lastSolvedAt: Date.now(),
-        },
-        updatedAt: Date.now(),
-      }));
-    } catch {
-      updateConversation(convoId, (conversation) => ({
-        ...conversation,
-        math: {
-          ...conversation.math,
-          question: prompt,
-          isLoading: false,
-          error: "Math solving failed. Check the backend and required Ollama models.",
-        },
-        updatedAt: Date.now(),
-      }));
-    }
-  };
-
   const activeView = activeConversation?.view || "chat";
-  const activeMode = activeConversation?.mode || "Build";
-  const isCenteredChat = activeView === "chat" && activeMode !== "Math" && (activeConversation?.messages || []).length === 0;
+  const activeMode = activeConversation?.mode || REGULAR_MODE;
+  const isCenteredChat = activeView === "chat" && (activeConversation?.messages || []).length === 0;
   const workspaceMeta = getWorkspaceMeta(activeView, activeMode, activeConversation);
 
   return (
@@ -646,16 +472,12 @@ function App() {
         collapsed={isSidebarCollapsed}
         isOpen={isSidebarOpen}
         onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
-        onOpenHome={() => {
-          openChatMode("Build");
+        onOpenRegularMode={() => {
+          openChatMode(REGULAR_MODE);
           setIsSidebarOpen(false);
         }}
-        onOpenControlMode={() => {
-          openChatMode("Control");
-          setIsSidebarOpen(false);
-        }}
-        onOpenMathMode={() => {
-          openChatMode("Math");
+        onOpenComputerMode={() => {
+          openChatMode(COMPUTER_MODE);
           setIsSidebarOpen(false);
         }}
         onSelectConversation={(id) => {
@@ -663,7 +485,7 @@ function App() {
           setIsSidebarOpen(false);
         }}
         onNewConversation={() => {
-          createAndFocusConversation(activeConversation?.mode || "Build");
+          createAndFocusConversation(activeConversation?.mode || REGULAR_MODE);
           setIsSidebarOpen(false);
         }}
         onOpenTool={(view) => {
@@ -674,7 +496,7 @@ function App() {
           setConversations((previous) => {
             const next = previous.filter((conversation) => conversation.id !== id);
             if (next.length === 0) {
-              const fresh = createConversation("Build");
+              const fresh = createConversation();
               setActiveId(fresh.id);
               return [fresh];
             }
@@ -715,7 +537,7 @@ function App() {
           </div>
         </header>
 
-        {activeView === "chat" && activeMode !== "Math" && (
+        {activeView === "chat" && (
           <div className={`chat-screen ${isCenteredChat ? "is-centered" : ""}`}>
             <ChatWindow mode={activeMode} messages={activeConversation?.messages || []} />
             <ChatInput
@@ -726,63 +548,6 @@ function App() {
             />
             <div className="app-footer">Helper AI can make mistakes. Check important answers.</div>
           </div>
-        )}
-
-        {activeView === "chat" && activeMode === "Math" && (
-          <>
-            <MathWorkspace
-              state={activeConversation.math || defaultMathState}
-              plan={tier}
-              onOpenBilling={() => openToolView("update")}
-              onChange={(next) =>
-                updateConversation(activeConversation.id, (conversation) => ({
-                  ...conversation,
-                  math: next,
-                  updatedAt: Date.now(),
-                }))
-              }
-              onSolve={solveMath}
-            />
-            <div className="app-footer">Helper AI can make mistakes. Check important answers.</div>
-          </>
-        )}
-
-        {activeView === "flashcards" && (
-          <Flashcards
-            state={activeConversation.flashcards || defaultFlashcardsState}
-            plan={tier}
-            onOpenBilling={() => openToolView("update")}
-            onChange={(next) =>
-              updateConversation(activeConversation.id, (conversation) => ({
-                ...conversation,
-                title:
-                  next.deckTitle && conversation.title === getDefaultConversationTitle(activeMode, "flashcards")
-                    ? makeTitle(next.deckTitle, "Flashcards")
-                    : conversation.title,
-                flashcards: next,
-                updatedAt: Date.now(),
-              }))
-            }
-          />
-        )}
-
-        {activeView === "slides" && (
-          <Slides
-            state={activeConversation.slides || defaultSlidesState}
-            plan={tier}
-            onOpenBilling={() => openToolView("update")}
-            onChange={(next) =>
-              updateConversation(activeConversation.id, (conversation) => ({
-                ...conversation,
-                title:
-                  next.title && conversation.title === getDefaultConversationTitle(activeMode, "slides")
-                    ? makeTitle(next.title, "Slides")
-                    : conversation.title,
-                slides: next,
-                updatedAt: Date.now(),
-              }))
-            }
-          />
         )}
 
         {activeView === "update" && (

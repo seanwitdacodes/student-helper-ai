@@ -1,17 +1,17 @@
 import { useMemo, useState } from "react";
 
 const FULL_FEATURES = [
-  "Deeper AI answers and math verification",
-  "Up to 50 AI flashcards",
-  "Up to 12 AI slides and all themes",
-  "Bigger workspaces and longer history",
+  "Faster AI responses on larger prompts",
+  "More capable Computer Mode help",
+  "Longer conversation history",
+  "Stronger local AI workspace",
 ];
 
 const FREE_FEATURES = [
-  "Core chat and tutoring",
-  "Basic math solving",
-  "Up to 12 AI flashcards",
-  "Up to 6 AI slides",
+  "Regular AI chat",
+  "Computer Mode access",
+  "Basic image analysis",
+  "Starter local AI workspace",
 ];
 
 function getTrialDaysLeft(trialEndsAt) {

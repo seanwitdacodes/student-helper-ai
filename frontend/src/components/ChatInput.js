@@ -31,6 +31,12 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
     }
   };
 
+  const placeholder = image
+    ? "Ask about the image..."
+    : mode === "computer"
+    ? "Tell Computer Mode what you want help doing on your computer..."
+    : "Ask anything...";
+
   return (
     <div
       className={`chat-input-shell ${centered ? "is-centered" : ""} ${isDragging ? "is-dragging" : ""}`}
@@ -59,21 +65,7 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
             ref={textareaRef}
             value={text}
             onChange={(event) => setText(event.target.value)}
-            placeholder={
-              image
-                ? "Ask about the image..."
-                : mode === "Math"
-                ? "Snap or upload a problem, then ask..."
-                : mode === "Control"
-                ? "Tell Helper AI what to do on your computer..."
-                : mode === "Tutor"
-                ? "Paste notes, ask why, or request a step-by-step lesson..."
-                : mode === "Research"
-                ? "Ask for a comparison, report, or structured findings..."
-                : mode === "Automation"
-                ? "Describe the workflow, recurrence, or task flow you want..."
-                : "Ask a question, describe a feature, or paste notes..."
-            }
+            placeholder={placeholder}
             onPaste={(event) => {
               const file = [...(event.clipboardData?.files || [])].find((item) => item.type.startsWith("image/"));
               if (file) {
