@@ -1,4 +1,15 @@
 import { Fragment, useMemo, useState } from "react";
+import Prism from "prismjs";
+import "prismjs/components/prism-bash";
+import "prismjs/components/prism-css";
+import "prismjs/components/prism-javascript";
+import "prismjs/components/prism-json";
+import "prismjs/components/prism-jsx";
+import "prismjs/components/prism-markdown";
+import "prismjs/components/prism-markup";
+import "prismjs/components/prism-python";
+import "prismjs/components/prism-tsx";
+import "prismjs/components/prism-typescript";
 
 function renderInline(text) {
   const source = String(text || "");
@@ -169,8 +180,24 @@ function parseMessageBlocks(content) {
   return blocks;
 }
 
+function normalizeLanguage(language) {
+  const value = String(language || "text").toLowerCase();
+
+  if (value === "js") return "javascript";
+  if (value === "ts") return "typescript";
+  if (value === "sh" || value === "shell" || value === "zsh") return "bash";
+  if (value === "html") return "markup";
+  if (value === "md") return "markdown";
+  return value;
+}
+
 function CodeBlock({ language, value }) {
   const [copied, setCopied] = useState(false);
+  const normalizedLanguage = normalizeLanguage(language);
+  const highlighted = useMemo(() => {
+    const grammar = Prism.languages[normalizedLanguage] || Prism.languages.markup || Prism.languages.clike;
+    return Prism.highlight(value, grammar, normalizedLanguage);
+  }, [normalizedLanguage, value]);
 
   const copy = async () => {
     try {
@@ -185,13 +212,13 @@ function CodeBlock({ language, value }) {
   return (
     <div className="message-code-block">
       <div className="code-block-header">
-        <span className="code-block-language">{language}</span>
+        <span className="code-block-language">{normalizedLanguage}</span>
         <button type="button" className="code-block-copy" onClick={copy}>
           {copied ? "Copied" : "Copy"}
         </button>
       </div>
       <pre>
-        <code>{value}</code>
+        <code dangerouslySetInnerHTML={{ __html: highlighted }} />
       </pre>
     </div>
   );
@@ -201,7 +228,7 @@ function Message({ role, content, isStreaming = false }) {
   const blocks = useMemo(() => parseMessageBlocks(content), [content]);
   const [copied, setCopied] = useState(false);
   const isAssistant = role === "assistant";
-  const author = isAssistant ? "Helper AI" : "You";
+  const author = isAssistant ? "Operator" : "You";
 
   const copyMessage = async () => {
     try {
@@ -218,7 +245,7 @@ function Message({ role, content, isStreaming = false }) {
       <div className="message-row">
         {isAssistant && (
           <div className="message-avatar" aria-hidden="true">
-            AI
+            OP
           </div>
         )}
 

@@ -1,24 +1,25 @@
 import { useMemo, useState } from "react";
+import BrandMark from "./BrandMark";
 
 const REGULAR_MODE = "regular";
 const COMPUTER_MODE = "computer";
 
-const NAV_ITEMS = [
-  { id: "regular", label: "Regular AI", kind: "chat", mode: REGULAR_MODE },
-  { id: "computer", label: "Computer Mode", kind: "chat", mode: COMPUTER_MODE },
-  { id: "update", label: "Update Version", kind: "view", view: "update" },
+const MAIN_ITEMS = [
+  {
+    id: "chat",
+    label: "Chat",
+    note: "Simple private AI chat",
+    mode: REGULAR_MODE,
+    icon: "C",
+  },
+  {
+    id: "computer",
+    label: "Computer Mode",
+    note: "Browser and desktop help",
+    mode: COMPUTER_MODE,
+    icon: "O",
+  },
 ];
-
-const MODE_PREVIEW = {
-  [REGULAR_MODE]: "Regular AI is ready.",
-  [COMPUTER_MODE]: "Computer Mode is ready.",
-};
-
-function getPlanLabel(tier) {
-  if (tier === "pro") return "Full Version";
-  if (tier === "trial") return "Free Trial";
-  return "Free Plan";
-}
 
 function formatRelativeTime(timestamp) {
   const diff = Math.max(0, Date.now() - Number(timestamp || 0));
@@ -27,17 +28,14 @@ function formatRelativeTime(timestamp) {
   const day = 24 * hour;
 
   if (diff < hour) {
-    const minutes = Math.max(1, Math.round(diff / minute));
-    return `${minutes}m`;
+    return `${Math.max(1, Math.round(diff / minute))}m`;
   }
 
   if (diff < day) {
-    const hours = Math.max(1, Math.round(diff / hour));
-    return `${hours}h`;
+    return `${Math.max(1, Math.round(diff / hour))}h`;
   }
 
-  const days = Math.max(1, Math.round(diff / day));
-  return `${days}d`;
+  return `${Math.max(1, Math.round(diff / day))}d`;
 }
 
 function getPreviewText(conversation) {
@@ -49,13 +47,15 @@ function getPreviewText(conversation) {
       .slice(0, 90);
   }
 
-  return MODE_PREVIEW[conversation.mode] || "A fresh thread is ready.";
+  if (conversation.mode === COMPUTER_MODE) {
+    return "Ready for browser and desktop tasks.";
+  }
+
+  return "Ready for a new chat.";
 }
 
 function Sidebar({
   mode,
-  activeView,
-  account,
   conversations,
   activeId,
   collapsed = false,
@@ -65,38 +65,29 @@ function Sidebar({
   onOpenComputerMode,
   onSelectConversation,
   onNewConversation,
-  onOpenTool,
   onDeleteConversation,
 }) {
   const [showAllThreads, setShowAllThreads] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const normalizedSearch = searchTerm.trim().toLowerCase();
+  const activeMode = mode === COMPUTER_MODE ? COMPUTER_MODE : REGULAR_MODE;
 
   const visibleConversations = useMemo(
-    () =>
-      (showAllThreads ? conversations : conversations.slice(0, 12)).filter((conversation) => {
-        if (!normalizedSearch) return true;
-        const haystack = [conversation.title, getPreviewText(conversation)].join(" ").toLowerCase();
-        return haystack.includes(normalizedSearch);
-      }),
-    [conversations, normalizedSearch, showAllThreads],
+    () => (showAllThreads ? conversations : conversations.slice(0, 8)),
+    [conversations, showAllThreads],
   );
-  const planLabel = getPlanLabel(account?.tier);
 
   return (
     <aside className={`sidebar ${collapsed ? "is-collapsed" : ""} ${isOpen ? "is-open" : ""}`}>
       <div className="sidebar-top">
         <div className="sidebar-brand-block">
-          <div className="brand-mark" aria-hidden="true">
-            H
-          </div>
+          <BrandMark />
           {!collapsed && (
             <div className="sidebar-brand-copy">
-              <div className="sidebar-brand-title">Helper AI</div>
-              <div className="sidebar-brand-subtitle">Simple, fast local AI</div>
+              <div className="sidebar-brand-title">Operator</div>
+              <div className="sidebar-brand-subtitle">Simple local AI with just two modes.</div>
             </div>
           )}
         </div>
+
         <button
           type="button"
           className="sidebar-collapse-btn"
@@ -116,53 +107,36 @@ function Sidebar({
       </button>
 
       {!collapsed && (
-        <label className="sidebar-search">
-          <span className="section-label">Search</span>
-          <input
-            type="search"
-            value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
-            placeholder="Search chats"
-            aria-label="Search chats"
-          />
-        </label>
-      )}
-
-      {!collapsed && (
         <div className="sidebar-section-head">
           <div className="section-label">Modes</div>
         </div>
       )}
 
       <div className="sidebar-nav">
-        {NAV_ITEMS.map((item) => (
+        {MAIN_ITEMS.map((item) => (
           <button
             key={item.id}
             type="button"
             title={item.label}
-            className={`sidebar-nav-item ${
-              (item.mode === mode && activeView === "chat") || item.view === activeView ? "active" : ""
-            }`}
+            className={`sidebar-nav-item ${item.mode === activeMode ? "active" : ""}`}
             onClick={() => {
               if (item.mode === REGULAR_MODE) {
                 onOpenRegularMode();
                 return;
               }
 
-              if (item.mode === COMPUTER_MODE) {
-                onOpenComputerMode();
-                return;
-              }
-
-              if (item.view) {
-                onOpenTool(item.view);
-              }
+              onOpenComputerMode();
             }}
           >
             <span className="sidebar-nav-icon" aria-hidden="true">
-              {item.id === "regular" ? "R" : item.id === "computer" ? "C" : "U"}
+              {item.icon}
             </span>
-            {!collapsed && <span>{item.label}</span>}
+            {!collapsed && (
+              <span className="sidebar-nav-copy">
+                <strong>{item.label}</strong>
+                <span className="sidebar-nav-note">{item.note}</span>
+              </span>
+            )}
           </button>
         ))}
       </div>
@@ -189,39 +163,25 @@ function Sidebar({
             }}
           >
             <div className="chat-item-top">
-              {!collapsed && (
+              {!collapsed ? (
                 <>
                   <div className="chat-title">{conversation.title || "New chat"}</div>
                   <span className="chat-time">{formatRelativeTime(conversation.updatedAt)}</span>
                 </>
+              ) : (
+                <div className="chat-thread-index">{(conversation.title || "New chat").slice(0, 1)}</div>
               )}
-              {collapsed && <div className="chat-thread-index">{(conversation.title || "New chat").slice(0, 1)}</div>}
             </div>
             {!collapsed && <div className="chat-preview">{getPreviewText(conversation)}</div>}
           </button>
         ))}
       </div>
 
-      {conversations.length > 12 && !collapsed && (
+      {conversations.length > 8 && !collapsed && (
         <button className="sidebar-show-more" onClick={() => setShowAllThreads((current) => !current)}>
           {showAllThreads ? "Show less" : "Show more"}
         </button>
       )}
-
-      <div className="sidebar-footer">
-        {!collapsed && (
-          <div className="sidebar-plan-summary">
-            <div className="section-label">Account</div>
-            <strong>{planLabel}</strong>
-          </div>
-        )}
-        <button type="button" className="sidebar-footer-btn" onClick={() => onOpenTool("update")} title="Update Version">
-          <span className="sidebar-nav-icon" aria-hidden="true">
-            U
-          </span>
-          {!collapsed && <span>Update Version</span>}
-        </button>
-      </div>
     </aside>
   );
 }

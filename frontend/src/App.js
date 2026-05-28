@@ -2,19 +2,17 @@ import { useEffect, useMemo, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
-import BillingModal from "./components/BillingModal";
 import "./App.css";
 
-const API_BASE = "http://localhost:5050";
+const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:5050";
 const ACCOUNT_STORAGE_KEY = "studentHelperAccount";
-const TRIAL_LENGTH_DAYS = 7;
-const TRIAL_LENGTH_MS = TRIAL_LENGTH_DAYS * 24 * 60 * 60 * 1000;
 const REGULAR_MODE = "regular";
 const COMPUTER_MODE = "computer";
 const CHAT_MODES = new Set([REGULAR_MODE, COMPUTER_MODE]);
+const LEGACY_CHAT_MODES = new Set(["agent"]);
 const LEGACY_COMPUTER_MODES = new Set(["Control", "Automation"]);
-const SUPPORTED_VIEWS = new Set(["chat", "update"]);
-const STREAM_UPDATE_INTERVAL_MS = 48;
+const STREAM_UPDATE_INTERVAL_MS = 96;
+const ENABLE_STARTUP_WARMUP = process.env.REACT_APP_ENABLE_WARMUP === "true";
 
 const defaultAccountState = {
   tier: "free",
@@ -33,40 +31,30 @@ function hasPremiumAccess(tier) {
   return tier === "trial" || tier === "pro";
 }
 
-function getPlanLabel(tier) {
-  if (tier === "pro") return "Full Version";
-  if (tier === "trial") return "Free Trial";
-  return "Free Plan";
-}
-
 function normalizeMode(mode) {
   if (CHAT_MODES.has(mode)) return mode;
+  if (LEGACY_CHAT_MODES.has(mode)) return REGULAR_MODE;
   if (LEGACY_COMPUTER_MODES.has(mode)) return COMPUTER_MODE;
   return REGULAR_MODE;
 }
 
-function getDefaultConversationTitle(mode = REGULAR_MODE, view = "chat") {
-  if (view === "update") return "Update version";
-  if (mode === COMPUTER_MODE) return "Computer Mode";
-  return "New chat";
+function getDefaultConversationTitle(mode = REGULAR_MODE) {
+  return mode === COMPUTER_MODE ? "Computer Mode" : "New chat";
 }
 
-function isDefaultConversationTitle(title, mode = REGULAR_MODE, view = "chat") {
+function isDefaultConversationTitle(title, mode = REGULAR_MODE) {
   const normalizedTitle = String(title || "").trim().toLowerCase();
   const defaults = new Set([
-    getDefaultConversationTitle(mode, view).toLowerCase(),
+    getDefaultConversationTitle(mode).toLowerCase(),
     "new chat",
+    "helper ai",
     "regular ai",
+    "agent workspace",
     "computer mode",
     "control computer mode",
-    "math solver",
-    "answer mode",
-    "tutor mode",
-    "research mode",
-    "automation mode",
-    "flashcards",
-    "slides",
     "update version",
+    "upgrade operator",
+    "preferences",
   ]);
   return defaults.has(normalizedTitle);
 }
@@ -99,18 +87,16 @@ function normalizeConversation(conversation) {
     flashcards: _flashcards,
     math: _math,
     slides: _slides,
+    view: _view,
     ...rest
   } = source;
-  const storedView = typeof rest.view === "string" ? rest.view : "chat";
-  const view = SUPPORTED_VIEWS.has(storedView) ? storedView : "chat";
   const mode = normalizeMode(rest.mode);
-  const fallbackTitle = getDefaultConversationTitle(mode, view);
-  const title = isDefaultConversationTitle(rest.title, mode, storedView) ? fallbackTitle : rest.title || fallbackTitle;
+  const fallbackTitle = getDefaultConversationTitle(mode);
+  const title = isDefaultConversationTitle(rest.title, mode) ? fallbackTitle : rest.title || fallbackTitle;
 
   return {
     id: rest.id || uid(),
     mode,
-    view,
     title,
     messages: Array.isArray(rest.messages) ? rest.messages : [],
     createdAt: Number(rest.createdAt) || Date.now(),
@@ -118,12 +104,11 @@ function normalizeConversation(conversation) {
   };
 }
 
-function createConversation(mode = REGULAR_MODE, view = "chat") {
+function createConversation(mode = REGULAR_MODE) {
   return normalizeConversation({
     id: uid(),
-    title: getDefaultConversationTitle(mode, view),
+    title: getDefaultConversationTitle(mode),
     mode,
-    view,
     messages: [],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -137,28 +122,57 @@ function makeTitle(text, fallback = "New chat") {
   return cleaned.slice(0, 52) || fallback;
 }
 
-function getWorkspaceMeta(activeView, activeMode, conversation) {
-  if (activeView === "update") {
-    return {
-      eyebrow: "Settings",
-      title: "Update Version",
-      summary: "Manage plan access and unlock premium workspace features.",
-    };
-  }
+function getHeaderCopy(conversation) {
+  const hasMessages = (conversation?.messages || []).length > 0;
+  const mode = conversation?.mode || REGULAR_MODE;
 
-  if (activeMode === COMPUTER_MODE) {
+  if (!hasMessages) {
     return {
-      eyebrow: "Computer Mode",
-      title: "Computer Mode",
-      summary: "Use this mode for computer tasks, commands, and step-by-step device help.",
+      title: "Operator",
+      summary:
+        mode === COMPUTER_MODE
+          ? "Computer Mode for browser research, desktop tasks, and guided workflows."
+          : "Simple private AI chat for questions, drafts, notes, and study help.",
     };
   }
 
   return {
-    eyebrow: "Regular AI",
-    title: conversation?.messages?.length ? conversation?.title || "New chat" : "Helper AI",
-    summary: "A simple, fast AI chat for questions, writing, notes, and ideas.",
+    title: conversation?.title || getDefaultConversationTitle(mode),
+    summary:
+      mode === COMPUTER_MODE
+        ? "Computer Mode is active."
+        : "Chat is active.",
   };
+}
+
+function HomeScreen({ mode, summary, onOpenRegularMode, onOpenComputerMode, onSend, onSendImage }) {
+  return (
+    <div className="home-screen">
+      <div className="home-copy">
+        <h1>Operator</h1>
+        <p>{summary}</p>
+      </div>
+
+      <ChatInput mode={mode} centered onSend={onSend} onSendImage={onSendImage} />
+
+      <div className="mode-switch-row is-home">
+        <button
+          type="button"
+          className={`mode-switch-btn ${mode === REGULAR_MODE ? "active" : ""}`}
+          onClick={onOpenRegularMode}
+        >
+          Chat
+        </button>
+        <button
+          type="button"
+          className={`mode-switch-btn ${mode === COMPUTER_MODE ? "active" : ""}`}
+          onClick={onOpenComputerMode}
+        >
+          Computer Mode
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function App() {
@@ -174,7 +188,7 @@ function App() {
         // ignore malformed storage
       }
     }
-    return [createConversation()];
+    return [createConversation(REGULAR_MODE)];
   });
 
   const [activeId, setActiveId] = useState(() => localStorage.getItem("chatActiveId") || null);
@@ -189,6 +203,13 @@ function App() {
   });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const hasStreamingMessages = useMemo(
+    () =>
+      conversations.some((conversation) =>
+        (conversation.messages || []).some((message) => Boolean(message.isStreaming)),
+      ),
+    [conversations],
+  );
 
   useEffect(() => {
     if (!activeId && conversations.length > 0) {
@@ -197,12 +218,14 @@ function App() {
   }, [activeId, conversations]);
 
   useEffect(() => {
+    if (hasStreamingMessages) return undefined;
+
     const timeoutId = window.setTimeout(() => {
       localStorage.setItem("chatHistory", JSON.stringify(conversations));
     }, 180);
 
     return () => window.clearTimeout(timeoutId);
-  }, [conversations]);
+  }, [conversations, hasStreamingMessages]);
 
   useEffect(() => {
     if (activeId) {
@@ -248,21 +271,25 @@ function App() {
   }, [account.tier, account.trialEndsAt]);
 
   useEffect(() => {
-    if (typeof fetch !== "function") return;
+    if (!ENABLE_STARTUP_WARMUP) return undefined;
+    if (typeof fetch !== "function") return undefined;
 
-    fetch(`${API_BASE}/warmup`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tier: hasPremiumAccess(account.tier) ? account.tier : "free" }),
-    }).catch(() => {
-      // best-effort warmup
-    });
+    const timeoutId = window.setTimeout(() => {
+      fetch(`${API_BASE}/warmup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tier: hasPremiumAccess(account.tier) ? account.tier : "free" }),
+      }).catch(() => {
+        // best-effort warmup
+      });
+    }, 1200);
+
+    return () => window.clearTimeout(timeoutId);
   }, [account.tier]);
 
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeId) || conversations[0];
   const tier = hasPremiumAccess(account.tier) ? account.tier : "free";
-  const planLabel = getPlanLabel(account.tier);
 
   const orderedConversations = useMemo(
     () => [...conversations].sort((a, b) => b.updatedAt - a.updatedAt),
@@ -277,35 +304,26 @@ function App() {
     );
   };
 
-  const createAndFocusConversation = (mode = activeConversation?.mode || REGULAR_MODE, view = "chat") => {
-    const fresh = createConversation(mode, view);
+  const createAndFocusConversation = (mode = activeConversation?.mode || REGULAR_MODE) => {
+    const fresh = createConversation(mode);
     setConversations((previous) => [fresh, ...previous]);
     setActiveId(fresh.id);
   };
 
   const openChatMode = (nextMode) => {
-    if (activeConversation?.view === "chat" && (activeConversation.messages || []).length === 0) {
+    if (!activeConversation) return;
+
+    if ((activeConversation.messages || []).length === 0) {
       updateConversation(activeConversation.id, (conversation) => ({
         ...conversation,
         mode: nextMode,
-        view: "chat",
-        title: getDefaultConversationTitle(nextMode, "chat"),
+        title: getDefaultConversationTitle(nextMode),
         updatedAt: Date.now(),
       }));
       return;
     }
 
-    createAndFocusConversation(nextMode, "chat");
-  };
-
-  const openToolView = (view) => {
-    const existingConversation = orderedConversations.find((conversation) => conversation.view === view);
-    if (existingConversation) {
-      setActiveId(existingConversation.id);
-      return;
-    }
-
-    createAndFocusConversation(activeConversation?.mode || REGULAR_MODE, view);
+    createAndFocusConversation(nextMode);
   };
 
   const sendMessage = async (text) => {
@@ -318,7 +336,7 @@ function App() {
 
     updateConversation(convoId, (conversation) => ({
       ...conversation,
-      title: isDefaultConversationTitle(conversation.title, conversation.mode, conversation.view)
+      title: isDefaultConversationTitle(conversation.title, conversation.mode)
         ? title
         : conversation.title,
       messages: [
@@ -410,7 +428,7 @@ function App() {
 
     updateConversation(convoId, (conversation) => ({
       ...conversation,
-      title: isDefaultConversationTitle(conversation.title, conversation.mode, conversation.view)
+      title: isDefaultConversationTitle(conversation.title, conversation.mode)
         ? makeTitle(prompt, "Image chat")
         : conversation.title,
       messages: [...conversation.messages, { id: uid(), role: "user", content: prompt }],
@@ -450,10 +468,9 @@ function App() {
     }
   };
 
-  const activeView = activeConversation?.view || "chat";
   const activeMode = activeConversation?.mode || REGULAR_MODE;
-  const isCenteredChat = activeView === "chat" && (activeConversation?.messages || []).length === 0;
-  const workspaceMeta = getWorkspaceMeta(activeView, activeMode, activeConversation);
+  const isCenteredChat = (activeConversation?.messages || []).length === 0;
+  const headerCopy = getHeaderCopy(activeConversation);
 
   return (
     <div className={`layout ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -465,8 +482,6 @@ function App() {
 
       <Sidebar
         mode={activeMode}
-        activeView={activeView}
-        account={account}
         conversations={orderedConversations}
         activeId={activeConversation?.id}
         collapsed={isSidebarCollapsed}
@@ -488,15 +503,11 @@ function App() {
           createAndFocusConversation(activeConversation?.mode || REGULAR_MODE);
           setIsSidebarOpen(false);
         }}
-        onOpenTool={(view) => {
-          openToolView(view);
-          setIsSidebarOpen(false);
-        }}
         onDeleteConversation={(id) => {
           setConversations((previous) => {
             const next = previous.filter((conversation) => conversation.id !== id);
             if (next.length === 0) {
-              const fresh = createConversation();
+              const fresh = createConversation(REGULAR_MODE);
               setActiveId(fresh.id);
               return [fresh];
             }
@@ -509,7 +520,7 @@ function App() {
       />
 
       <div className="chat-area">
-        <header className="app-header">
+        <header className={`app-header ${isCenteredChat ? "is-home" : ""}`}>
           <div className="header-start">
             <button
               type="button"
@@ -522,77 +533,30 @@ function App() {
             >
               Menu
             </button>
-            <div className="header-copy">
-              <div className="header-eyebrow">{workspaceMeta.eyebrow}</div>
-              <h1>{workspaceMeta.title}</h1>
-              <p className="header-summary">{workspaceMeta.summary}</p>
-            </div>
-          </div>
-
-          <div className="header-actions">
-            <span className="header-pill">{planLabel}</span>
-            <button type="button" className="quiet-btn" onClick={() => openToolView("update")}>
-              Update
-            </button>
+            {!isCenteredChat && (
+              <div className="header-copy">
+                <h1>{headerCopy.title}</h1>
+                <p className="header-summary">{headerCopy.summary}</p>
+              </div>
+            )}
           </div>
         </header>
 
-        {activeView === "chat" && (
-          <div className={`chat-screen ${isCenteredChat ? "is-centered" : ""}`}>
-            <ChatWindow mode={activeMode} messages={activeConversation?.messages || []} />
-            <ChatInput
-              mode={activeMode}
-              centered={isCenteredChat}
-              onSend={sendMessage}
-              onSendImage={sendImageMessage}
-            />
-            <div className="app-footer">Helper AI can make mistakes. Check important answers.</div>
-          </div>
-        )}
-
-        {activeView === "update" && (
-          <BillingModal
-            inline
-            account={account}
-            trialLengthDays={TRIAL_LENGTH_DAYS}
-            onClose={() => {}}
-            onStartTrial={() => {
-              const now = Date.now();
-              setAccount(
-                normalizeAccount({
-                  ...account,
-                  tier: "trial",
-                  hasUsedTrial: true,
-                  startedTrialAt: account.startedTrialAt || now,
-                  trialEndsAt: now + TRIAL_LENGTH_MS,
-                  paymentMethod: null,
-                  updatedAt: now,
-                }),
-              );
-            }}
-            onUpgrade={(paymentMethod) => {
-              setAccount(
-                normalizeAccount({
-                  ...account,
-                  tier: "pro",
-                  paymentMethod,
-                  trialEndsAt: 0,
-                  updatedAt: Date.now(),
-                }),
-              );
-            }}
-            onDowngrade={() => {
-              setAccount(
-                normalizeAccount({
-                  ...account,
-                  tier: "free",
-                  paymentMethod: null,
-                  trialEndsAt: 0,
-                  updatedAt: Date.now(),
-                }),
-              );
-            }}
+        {isCenteredChat ? (
+          <HomeScreen
+            mode={activeMode}
+            summary={headerCopy.summary}
+            onOpenRegularMode={() => openChatMode(REGULAR_MODE)}
+            onOpenComputerMode={() => openChatMode(COMPUTER_MODE)}
+            onSend={sendMessage}
+            onSendImage={sendImageMessage}
           />
+        ) : (
+          <div className="chat-screen">
+            <ChatWindow mode={activeMode} messages={activeConversation?.messages || []} />
+            <ChatInput mode={activeMode} onSend={sendMessage} onSendImage={sendImageMessage} />
+            <div className="app-footer">Review important output before acting on it.</div>
+          </div>
         )}
       </div>
     </div>

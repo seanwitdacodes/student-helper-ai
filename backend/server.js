@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import fetch from "node-fetch";
@@ -5,7 +6,10 @@ import multer from "multer";
 import fs from "fs";
 
 const app = express();
-const PORT = 5050;
+const PORT = Number(process.env.PORT) || 5050;
+const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
+const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "5m";
+const ENABLE_WARMUP = String(process.env.OLLAMA_ENABLE_WARMUP || "").toLowerCase() === "true";
 const CHAT_MODEL = process.env.OLLAMA_CHAT_MODEL || "llama3";
 const FAST_MODEL = process.env.OLLAMA_FAST_MODEL || CHAT_MODEL;
 const PRO_MODEL = process.env.OLLAMA_PRO_MODEL || CHAT_MODEL;
@@ -27,11 +31,11 @@ app.get("/", (_, res) => {
 });
 
 async function askOllama(payload) {
-  const res = await fetch("http://localhost:11434/api/generate", {
+  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      keep_alive: "30m",
+      keep_alive: OLLAMA_KEEP_ALIVE,
       ...payload,
     }),
   });
@@ -46,11 +50,11 @@ async function askOllama(payload) {
 }
 
 async function streamOllamaResponse(payload, onChunk) {
-  const res = await fetch("http://localhost:11434/api/generate", {
+  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      keep_alive: "30m",
+      keep_alive: OLLAMA_KEEP_ALIVE,
       ...payload,
       stream: true,
     }),
@@ -228,6 +232,10 @@ app.post("/chat", async (req, res) => {
 });
 
 app.post("/warmup", async (req, res) => {
+  if (!ENABLE_WARMUP) {
+    return res.status(204).end();
+  }
+
   const tier = req.body?.tier;
   const mode = req.body?.mode;
   const assistantConfig = parseAssistantConfig(req.body?.assistant);

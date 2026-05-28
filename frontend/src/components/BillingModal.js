@@ -90,8 +90,8 @@ function BillingModal({ account, trialLengthDays = 7, onClose, onStartTrial, onU
     <div className="billing-modal">
         <div className="billing-header">
           <div>
-            <div className="tool-eyebrow">{inline ? "Update Version" : "Billing"}</div>
-            <h3>{inline ? "Choose your Helper AI plan" : "Free, trial, and full version"}</h3>
+            <div className="tool-eyebrow">{inline ? "Upgrade Operator" : "Billing"}</div>
+            <h3>{inline ? "Choose your Operator plan" : "Free, trial, and full version"}</h3>
           </div>
           {!inline && (
             <button type="button" className="quiet-btn" onClick={onClose}>
@@ -190,7 +190,7 @@ function BillingModal({ account, trialLengthDays = 7, onClose, onStartTrial, onU
           <form className="billing-form" onSubmit={submit}>
             <div className="deck-title">Payment for Full Version</div>
             <p className="deck-meta">
-              Unlock everything for a one-time $1.99. This project currently stores billing state
+              Unlock everything for a one-time $1.99. Billing state in this prototype is still stored
               locally in the browser.
             </p>
 

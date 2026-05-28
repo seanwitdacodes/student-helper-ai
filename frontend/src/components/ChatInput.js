@@ -1,5 +1,15 @@
 import { useEffect, useRef, useState } from "react";
 
+const MODE_LABELS = {
+  regular: "Chat",
+  computer: "Computer Mode",
+};
+
+const MODE_HINTS = {
+  regular: "Simple private AI chat",
+  computer: "Browser and desktop help",
+};
+
 function ChatInput({ mode, centered = false, onSend, onSendImage }) {
   const [text, setText] = useState("");
   const [image, setImage] = useState(null);
@@ -12,7 +22,7 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
     const element = textareaRef.current;
     if (!element) return;
     element.style.height = "0px";
-    element.style.height = `${Math.min(element.scrollHeight, centered ? 196 : 240)}px`;
+    element.style.height = `${Math.min(element.scrollHeight, centered ? 96 : 176)}px`;
   }, [centered, text]);
 
   const send = () => {
@@ -27,15 +37,17 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
 
     setText("");
     if (textareaRef.current) {
-      textareaRef.current.style.height = centered ? "132px" : "120px";
+      textareaRef.current.style.height = centered ? "32px" : "86px";
     }
   };
 
   const placeholder = image
     ? "Ask about the image..."
+    : centered
+    ? "Ask anything"
     : mode === "computer"
-    ? "Tell Computer Mode what you want help doing on your computer..."
-    : "Ask anything...";
+    ? "Tell Operator what you want to do on your computer..."
+    : "Ask anything private and local...";
 
   return (
     <div
@@ -60,6 +72,11 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
       }}
     >
       <div className={`chat-input ${centered ? "is-minimal" : ""}`}>
+        <div className="composer-topline">
+          <span className="composer-mode-badge">{MODE_LABELS[mode] || "Chat"}</span>
+          <span className="composer-hint">{MODE_HINTS[mode] || "Private local workspace"}</span>
+        </div>
+
         <div className="input-main">
           <textarea
             ref={textareaRef}
@@ -103,6 +120,7 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
               >
                 +
               </button>
+
               {!centered && (
                 <>
                   <button
@@ -121,7 +139,7 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
                   >
                     Camera
                   </button>
-                  <span className="composer-enter-hint">Enter to send</span>
+                  <span className="composer-enter-hint">Enter sends</span>
                 </>
               )}
             </div>
@@ -132,8 +150,9 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
                 className="send-btn send-arrow-btn"
                 onClick={send}
                 disabled={!text.trim() && !image}
+                aria-label="Send message"
               >
-                Send
+                {centered ? "↑" : "Send"}
               </button>
             </div>
           </div>

@@ -8,10 +8,7 @@ const LEGACY_WELCOME_MESSAGES = new Set([
   "Control Computer Mode is ready.",
 ]);
 
-function ChatWindow({
-  messages,
-  mode,
-}) {
+function ChatWindow({ messages }) {
   const viewportRef = useRef(null);
   const bottomAnchorRef = useRef(null);
   const shouldStickToBottomRef = useRef(true);
@@ -25,10 +22,6 @@ function ChatWindow({
     [messages],
   );
   const showWelcome = visibleMessages.length === 0;
-  const subtitle =
-    mode === "computer"
-      ? "Describe the task, command, or app workflow you want help with."
-      : "Ask anything to get started.";
 
   useEffect(() => {
     if (showWelcome) return;
@@ -48,12 +41,7 @@ function ChatWindow({
         }}
       >
         {showWelcome && (
-          <div className="chat-welcome-shell">
-            <div className="chat-welcome-hero">
-              <h1>Welcome to Helper AI</h1>
-              <p className="welcome-copy">{subtitle}</p>
-            </div>
-          </div>
+          <div className="thread-empty-state" />
         )}
 
         {!showWelcome && (
