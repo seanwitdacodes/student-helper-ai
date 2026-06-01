@@ -7,18 +7,36 @@ import fs from "fs";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5050;
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || "http://127.0.0.1:11434";
-const OLLAMA_KEEP_ALIVE = process.env.OLLAMA_KEEP_ALIVE || "5m";
-const ENABLE_WARMUP = String(process.env.OLLAMA_ENABLE_WARMUP || "").toLowerCase() === "true";
-const CHAT_MODEL = process.env.OLLAMA_CHAT_MODEL || "llama3";
-const FAST_MODEL = process.env.OLLAMA_FAST_MODEL || CHAT_MODEL;
-const PRO_MODEL = process.env.OLLAMA_PRO_MODEL || CHAT_MODEL;
-const VISION_MODEL = process.env.OLLAMA_VISION_MODEL || "llava";
+const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+const ENABLE_WARMUP = String(process.env.GROQ_ENABLE_WARMUP || "").toLowerCase() === "true";
+const CHAT_MODEL = process.env.GROQ_CHAT_MODEL || "llama-3.1-8b-instant";
+const FAST_MODEL = process.env.GROQ_FAST_MODEL || CHAT_MODEL;
+const PRO_MODEL = process.env.GROQ_PRO_MODEL || "openai/gpt-oss-20b";
+const VISION_MODEL =
+  process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
 const REGULAR_MODE = "regular";
 const COMPUTER_MODE = "computer";
 const DEFAULT_ASSISTANT_CONFIG = {
   model: "fast",
-  reasoning: "balanced",
+  reasoning: "fast",
+};
+
+const OUTPUT_LIMITS = {
+  vision: {
+    fast: { free: 120, pro: 160 },
+    balanced: { free: 160, pro: 220 },
+    deep: { free: 220, pro: 280 },
+  },
+  regular: {
+    fast: { free: 128, pro: 192 },
+    balanced: { free: 192, pro: 256 },
+    deep: { free: 280, pro: 360 },
+  },
+  computer: {
+    fast: { free: 160, pro: 220 },
+    balanced: { free: 220, pro: 300 },
+    deep: { free: 320, pro: 420 },
+  },
 };
 
 app.use(cors());
@@ -29,70 +47,6 @@ const upload = multer({ dest: "uploads/" });
 app.get("/", (_, res) => {
   res.send("Student Helper AI backend running");
 });
-
-async function askOllama(payload) {
-  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      keep_alive: OLLAMA_KEEP_ALIVE,
-      ...payload,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Ollama error ${res.status}: ${text}`);
-  }
-
-  const data = await res.json();
-  return data.response;
-}
-
-async function streamOllamaResponse(payload, onChunk) {
-  const res = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      keep_alive: OLLAMA_KEEP_ALIVE,
-      ...payload,
-      stream: true,
-    }),
-  });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Ollama error ${res.status}: ${text}`);
-  }
-
-  let buffer = "";
-
-  for await (const chunk of res.body) {
-    buffer += chunk.toString("utf8");
-    const lines = buffer.split("\n");
-    buffer = lines.pop() || "";
-
-    for (const line of lines) {
-      if (!line.trim()) continue;
-
-      const parsed = JSON.parse(line);
-      if (parsed.response) {
-        onChunk(parsed.response);
-      }
-
-      if (parsed.done) {
-        return;
-      }
-    }
-  }
-
-  if (!buffer.trim()) return;
-
-  const parsed = JSON.parse(buffer);
-  if (parsed.response) {
-    onChunk(parsed.response);
-  }
-}
 
 function safeDelete(path) {
   if (!path) return;
@@ -134,21 +88,42 @@ function parseAssistantConfig(raw) {
   };
 }
 
+function getOutputLimit(reasoning, isPro, useVision, mode) {
+  const profileKey = useVision ? "vision" : mode === COMPUTER_MODE ? "computer" : "regular";
+  const profile = OUTPUT_LIMITS[profileKey]?.[reasoning] || OUTPUT_LIMITS[profileKey]?.fast;
+  return isPro ? profile.pro : profile.free;
+}
+
+function getReasoningEffort(model, reasoning) {
+  if (model.startsWith("openai/gpt-oss-")) {
+    return reasoning === "deep" ? "high" : reasoning === "balanced" ? "medium" : "low";
+  }
+
+  if (model.startsWith("qwen/")) {
+    return reasoning === "deep" ? "high" : reasoning === "balanced" ? "medium" : "low";
+  }
+
+  return null;
+}
+
 function getCapabilityConfig(tier, mode, useVision = false, assistant = {}) {
   const isPro = normalizeTier(tier) === "pro";
   const assistantConfig = parseAssistantConfig(assistant);
   const shouldUseProModel = assistantConfig.model === "pro" && isPro && !useVision;
   const normalizedMode = normalizeMode(mode);
+  const model = useVision ? VISION_MODEL : shouldUseProModel ? PRO_MODEL : FAST_MODEL;
 
   return {
-    model: useVision ? VISION_MODEL : shouldUseProModel ? PRO_MODEL : FAST_MODEL,
-    options: {
-      temperature: useVision ? 0.2 : normalizedMode === COMPUTER_MODE ? 0.15 : 0.35,
-      top_p: 0.9,
-      num_ctx:
-        assistantConfig.reasoning === "deep" ? (isPro ? 8192 : 6144) : isPro ? 6144 : 4096,
-      num_predict: useVision ? (isPro ? 260 : 180) : normalizedMode === COMPUTER_MODE ? (isPro ? 320 : 220) : isPro ? 280 : 180,
-    },
+    model,
+    temperature: useVision ? 0.2 : normalizedMode === COMPUTER_MODE ? 0.15 : 0.35,
+    topP: 0.9,
+    maxCompletionTokens: getOutputLimit(
+      assistantConfig.reasoning,
+      isPro,
+      useVision,
+      normalizedMode,
+    ),
+    reasoningEffort: getReasoningEffort(model, assistantConfig.reasoning),
   };
 }
 
@@ -159,15 +134,15 @@ function buildChatSystemPrompt(mode, tier, assistant = {}) {
 
   const common = [
     isPro
-      ? "You are Student Helper Pro AI, a fast local assistant for school, work, and computer tasks."
-      : "You are Student Helper AI, a fast local assistant for school, work, and everyday tasks.",
+      ? "You are Student Helper Pro AI, a fast assistant for school, work, and computer tasks."
+      : "You are Student Helper AI, a fast assistant for school, work, and everyday tasks.",
     "Be clear, accurate, direct, and practical.",
     "Be honest about limitations. Do not claim to browse the web, inspect local files, or control the device unless the result of that action is actually available in the conversation.",
     assistantConfig.reasoning === "deep"
       ? "Think carefully when needed, but keep the final answer concise."
       : assistantConfig.reasoning === "balanced"
       ? "Balance speed with a small amount of structure."
-      : "Prefer the fastest correct answer.",
+      : "Prefer the fastest correct answer and avoid unnecessary detail.",
   ].join(" ");
 
   if (normalizedMode === COMPUTER_MODE) {
@@ -177,12 +152,171 @@ function buildChatSystemPrompt(mode, tier, assistant = {}) {
   return `${common} You are in Regular AI mode. Help with questions, writing, brainstorming, studying, coding guidance, and image-based follow-up questions when an image is attached.`;
 }
 
+function getGroqApiKey() {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing GROQ_API_KEY. Add it to backend/.env before starting the server.");
+  }
+  return apiKey;
+}
+
+function getGroqHeaders() {
+  return {
+    Authorization: `Bearer ${getGroqApiKey()}`,
+    "Content-Type": "application/json",
+  };
+}
+
+async function throwGroqError(response, label) {
+  const text = await response.text();
+  throw new Error(`${label} ${response.status}: ${text}`);
+}
+
+function buildChatMessages(message, mode, tier, assistant = {}) {
+  return [
+    { role: "system", content: buildChatSystemPrompt(mode, tier, assistant) },
+    { role: "user", content: String(message || "").trim() || "Hello." },
+  ];
+}
+
+function buildChatPayload(messages, config, stream = false) {
+  const payload = {
+    model: config.model,
+    messages,
+    temperature: config.temperature,
+    top_p: config.topP,
+    max_completion_tokens: config.maxCompletionTokens,
+    stream,
+  };
+
+  if (config.reasoningEffort) {
+    payload.reasoning_effort = config.reasoningEffort;
+  }
+
+  return payload;
+}
+
+async function askGroqChat(messages, config) {
+  const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: getGroqHeaders(),
+    body: JSON.stringify(buildChatPayload(messages, config, false)),
+  });
+
+  if (!response.ok) {
+    await throwGroqError(response, "Groq chat error");
+  }
+
+  const data = await response.json();
+  return data?.choices?.[0]?.message?.content?.trim() || "";
+}
+
+async function streamGroqChatResponse(messages, config, onChunk) {
+  const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+    method: "POST",
+    headers: getGroqHeaders(),
+    body: JSON.stringify(buildChatPayload(messages, config, true)),
+  });
+
+  if (!response.ok) {
+    await throwGroqError(response, "Groq chat error");
+  }
+
+  let buffer = "";
+
+  for await (const chunk of response.body) {
+    buffer += chunk.toString("utf8");
+    const lines = buffer.split(/\r?\n/);
+    buffer = lines.pop() || "";
+
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      if (!line || line.startsWith(":") || !line.startsWith("data:")) {
+        continue;
+      }
+
+      const data = line.slice(5).trim();
+      if (!data) continue;
+      if (data === "[DONE]") return;
+
+      const parsed = JSON.parse(data);
+      const delta = parsed?.choices?.[0]?.delta?.content;
+      if (typeof delta === "string" && delta) {
+        onChunk(delta);
+      }
+    }
+  }
+}
+
+function extractResponseText(data) {
+  if (typeof data?.output_text === "string" && data.output_text.trim()) {
+    return data.output_text.trim();
+  }
+
+  const textParts = [];
+  for (const item of Array.isArray(data?.output) ? data.output : []) {
+    if (!Array.isArray(item?.content)) continue;
+
+    for (const contentItem of item.content) {
+      if (contentItem?.type === "output_text" && typeof contentItem.text === "string") {
+        textParts.push(contentItem.text);
+      }
+    }
+  }
+
+  return textParts.join("\n\n").trim();
+}
+
+async function askGroqVision(question, imageDataUrl, mode, tier, assistant = {}) {
+  const config = getCapabilityConfig(tier, mode, true, assistant);
+  const payload = {
+    model: config.model,
+    instructions: buildChatSystemPrompt(mode, tier, assistant),
+    input: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: String(question || "").trim() || "Analyze this image.",
+          },
+          {
+            type: "input_image",
+            image_url: imageDataUrl,
+            detail: "auto",
+          },
+        ],
+      },
+    ],
+    max_output_tokens: config.maxCompletionTokens,
+    temperature: config.temperature,
+    top_p: config.topP,
+  };
+
+  if (config.reasoningEffort) {
+    payload.reasoning = { effort: config.reasoningEffort };
+  }
+
+  const response = await fetch(`${GROQ_BASE_URL}/responses`, {
+    method: "POST",
+    headers: getGroqHeaders(),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    await throwGroqError(response, "Groq vision error");
+  }
+
+  const data = await response.json();
+  return extractResponseText(data);
+}
+
 app.post("/chat", async (req, res) => {
   const { message, mode, tier, assistant, stream } = req.body;
   const assistantConfig = parseAssistantConfig(assistant);
   const normalizedMode = normalizeMode(mode);
   const config = getCapabilityConfig(tier, normalizedMode, false, assistantConfig);
-  const prompt = `${buildChatSystemPrompt(normalizedMode, tier, assistantConfig)}\n\nUser message:\n${message || ""}`;
+  const messages = buildChatMessages(message, normalizedMode, tier, assistantConfig);
 
   try {
     if (stream) {
@@ -191,33 +325,21 @@ app.post("/chat", async (req, res) => {
       res.setHeader("X-Accel-Buffering", "no");
       res.flushHeaders?.();
 
-      await streamOllamaResponse(
-        {
-          model: config.model,
-          prompt,
-          options: config.options,
-        },
-        (text) => {
-          res.write(text);
-        },
-      );
+      await streamGroqChatResponse(messages, config, (text) => {
+        res.write(text);
+      });
 
       res.end();
       return;
     }
 
-    const answer = await askOllama({
-      model: config.model,
-      prompt,
-      options: config.options,
-      stream: false,
-    });
+    const answer = await askGroqChat(messages, config);
 
     res.json({ answer });
   } catch (error) {
     if (stream) {
       if (!res.headersSent) {
-        res.status(502).end("AI backend error");
+        res.status(502).end(error?.message || "AI backend error");
       } else {
         res.end();
       }
@@ -242,14 +364,9 @@ app.post("/warmup", async (req, res) => {
   const config = getCapabilityConfig(tier, normalizeMode(mode), false, assistantConfig);
 
   try {
-    await askOllama({
-      model: config.model,
-      prompt: "Reply with OK.",
-      options: {
-        ...config.options,
-        num_predict: 1,
-      },
-      stream: false,
+    await askGroqChat(buildChatMessages("Reply with OK.", normalizeMode(mode), tier, assistantConfig), {
+      ...config,
+      maxCompletionTokens: 1,
     });
 
     res.json({ ok: true });
@@ -280,16 +397,13 @@ app.post("/vision", upload.single("image"), async (req, res) => {
 
   try {
     const normalizedMode = normalizeMode(mode);
-    const config = getCapabilityConfig(tier, normalizedMode, true, assistantConfig);
-    const answer = await askOllama({
-      model: config.model,
-      prompt: `${buildChatSystemPrompt(normalizedMode, tier, assistantConfig)}\n\nUser request:\n${
-        question || "Analyze this image."
-      }`,
-      images: [imageBase64],
-      options: config.options,
-      stream: false,
-    });
+    const answer = await askGroqVision(
+      question,
+      `data:${req.file.mimetype};base64,${imageBase64}`,
+      normalizedMode,
+      tier,
+      assistantConfig,
+    );
 
     res.json({ answer });
   } catch (error) {

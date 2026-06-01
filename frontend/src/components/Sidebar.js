@@ -39,7 +39,10 @@ function formatRelativeTime(timestamp) {
 }
 
 function getPreviewText(conversation) {
-  const latest = String(conversation.messages?.[conversation.messages.length - 1]?.content || "").trim();
+  const stableMessage = [...(conversation.messages || [])]
+    .reverse()
+    .find((message) => !message?.isStreaming && String(message?.content || "").trim());
+  const latest = String(stableMessage?.content || "").trim();
   if (latest) {
     return latest
       .replace(/```[\s\S]*?```/g, "[code]")

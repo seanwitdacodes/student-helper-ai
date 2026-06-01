@@ -1024,6 +1024,11 @@ a {
   line-height: 1.7;
 }
 
+.message-streaming-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .message.streaming .message-content::after {
   content: "";
   display: inline-block;

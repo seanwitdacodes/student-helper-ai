@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, memo, useMemo, useState } from "react";
 import Prism from "prismjs";
 import "prismjs/components/prism-bash";
 import "prismjs/components/prism-css";
@@ -224,8 +224,8 @@ function CodeBlock({ language, value }) {
   );
 }
 
-function Message({ role, content, isStreaming = false }) {
-  const blocks = useMemo(() => parseMessageBlocks(content), [content]);
+const Message = memo(function Message({ role, content, isStreaming = false }) {
+  const blocks = useMemo(() => (isStreaming ? [] : parseMessageBlocks(content)), [content, isStreaming]);
   const [copied, setCopied] = useState(false);
   const isAssistant = role === "assistant";
   const author = isAssistant ? "Operator" : "You";
@@ -261,60 +261,66 @@ function Message({ role, content, isStreaming = false }) {
 
           <div className="message-surface">
             <div className="message-content">
-              {blocks.map((block, index) => {
-                if (block.type === "heading") {
-                  const Tag = `h${block.level}`;
-                  return (
-                    <Tag key={index} className={`message-block message-heading-h${block.level}`}>
-                      {renderInline(block.text)}
-                    </Tag>
-                  );
-                }
+              {isStreaming ? (
+                <p className="message-block message-paragraph message-streaming-text">
+                  {String(content || "Thinking...")}
+                </p>
+              ) : (
+                blocks.map((block, index) => {
+                  if (block.type === "heading") {
+                    const Tag = `h${block.level}`;
+                    return (
+                      <Tag key={index} className={`message-block message-heading-h${block.level}`}>
+                        {renderInline(block.text)}
+                      </Tag>
+                    );
+                  }
 
-                if (block.type === "quote") {
+                  if (block.type === "quote") {
+                    return (
+                      <blockquote key={index} className="message-block message-quote">
+                        {renderInline(block.value)}
+                      </blockquote>
+                    );
+                  }
+
+                  if (block.type === "unordered-list") {
+                    return (
+                      <ul key={index} className="message-block message-list">
+                        {block.items.map((item, itemIndex) => (
+                          <li key={itemIndex}>{renderInline(item)}</li>
+                        ))}
+                      </ul>
+                    );
+                  }
+
+                  if (block.type === "ordered-list") {
+                    return (
+                      <ol key={index} className="message-block message-list message-list-ordered">
+                        {block.items.map((item, itemIndex) => (
+                          <li key={itemIndex}>{renderInline(item)}</li>
+                        ))}
+                      </ol>
+                    );
+                  }
+
+                  if (block.type === "code") {
+                    return <CodeBlock key={index} language={block.language} value={block.value} />;
+                  }
+
                   return (
-                    <blockquote key={index} className="message-block message-quote">
+                    <p key={index} className="message-block message-paragraph">
                       {renderInline(block.value)}
-                    </blockquote>
+                    </p>
                   );
-                }
-
-                if (block.type === "unordered-list") {
-                  return (
-                    <ul key={index} className="message-block message-list">
-                      {block.items.map((item, itemIndex) => (
-                        <li key={itemIndex}>{renderInline(item)}</li>
-                      ))}
-                    </ul>
-                  );
-                }
-
-                if (block.type === "ordered-list") {
-                  return (
-                    <ol key={index} className="message-block message-list message-list-ordered">
-                      {block.items.map((item, itemIndex) => (
-                        <li key={itemIndex}>{renderInline(item)}</li>
-                      ))}
-                    </ol>
-                  );
-                }
-
-                if (block.type === "code") {
-                  return <CodeBlock key={index} language={block.language} value={block.value} />;
-                }
-
-                return (
-                  <p key={index} className="message-block message-paragraph">
-                    {renderInline(block.value)}
-                  </p>
-                );
-              })}
+                })
+              )}
             </div>
           </div>
         </div>
       </div>
     </article>
   );
-}
+});
 
 export default Message;

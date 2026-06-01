@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
@@ -11,7 +11,7 @@ const COMPUTER_MODE = "computer";
 const CHAT_MODES = new Set([REGULAR_MODE, COMPUTER_MODE]);
 const LEGACY_CHAT_MODES = new Set(["agent"]);
 const LEGACY_COMPUTER_MODES = new Set(["Control", "Automation"]);
-const STREAM_UPDATE_INTERVAL_MS = 96;
+const STREAM_UPDATE_INTERVAL_MS = 180;
 const ENABLE_STARTUP_WARMUP = process.env.REACT_APP_ENABLE_WARMUP === "true";
 
 const defaultAccountState = {
@@ -122,6 +122,28 @@ function makeTitle(text, fallback = "New chat") {
   return cleaned.slice(0, 52) || fallback;
 }
 
+function mergeStreamingMessage(messages, streamingMessage) {
+  if (!Array.isArray(messages) || !streamingMessage?.messageId) {
+    return Array.isArray(messages) ? messages : [];
+  }
+
+  let hasMatch = false;
+  const nextMessages = messages.map((message) => {
+    if (message.id !== streamingMessage.messageId) {
+      return message;
+    }
+
+    hasMatch = true;
+    return {
+      ...message,
+      content: streamingMessage.content,
+      isStreaming: streamingMessage.isStreaming,
+    };
+  });
+
+  return hasMatch ? nextMessages : messages;
+}
+
 function getHeaderCopy(conversation) {
   const hasMessages = (conversation?.messages || []).length > 0;
   const mode = conversation?.mode || REGULAR_MODE;
@@ -203,6 +225,7 @@ function App() {
   });
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState(null);
   const hasStreamingMessages = useMemo(
     () =>
       conversations.some((conversation) =>
@@ -289,6 +312,12 @@ function App() {
 
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeId) || conversations[0];
+  const activeStreamingMessage =
+    streamingMessage?.conversationId === activeConversation?.id ? streamingMessage : null;
+  const activeMessages = useMemo(
+    () => mergeStreamingMessage(activeConversation?.messages || [], activeStreamingMessage),
+    [activeConversation?.messages, activeStreamingMessage],
+  );
   const tier = hasPremiumAccess(account.tier) ? account.tier : "free";
 
   const orderedConversations = useMemo(
@@ -346,6 +375,12 @@ function App() {
       ],
       updatedAt: Date.now(),
     }));
+    setStreamingMessage({
+      conversationId: convoId,
+      messageId: assistantId,
+      content: "Thinking...",
+      isStreaming: true,
+    });
 
     try {
       const res = await fetch(`${API_BASE}/chat`, {
@@ -360,7 +395,8 @@ function App() {
       });
 
       if (!res.ok) {
-        throw new Error("Chat request failed.");
+        const detail = (await res.text()).trim();
+        throw new Error(detail || "Chat request failed.");
       }
 
       if (!res.body) {
@@ -372,20 +408,27 @@ function App() {
       let assistantText = "";
       let lastRenderAt = 0;
 
-      const paintAssistantMessage = (isStreaming) => {
-        updateConversation(convoId, (conversation) => ({
-          ...conversation,
-          messages: conversation.messages.map((message) =>
-            message.id === assistantId
-              ? {
-                  ...message,
-                  content: assistantText.trim() || "Thinking...",
-                  isStreaming,
-                }
-              : message,
-          ),
-          updatedAt: Date.now(),
-        }));
+      const paintAssistantMessage = () => {
+        const nextContent = assistantText.trim() || "Thinking...";
+        startTransition(() => {
+          setStreamingMessage((current) => {
+            if (
+              current?.conversationId === convoId &&
+              current?.messageId === assistantId &&
+              current?.content === nextContent &&
+              current?.isStreaming
+            ) {
+              return current;
+            }
+
+            return {
+              conversationId: convoId,
+              messageId: assistantId,
+              content: nextContent,
+              isStreaming: true,
+            };
+          });
+        });
       };
 
       while (true) {
@@ -396,20 +439,42 @@ function App() {
 
         if (Date.now() - lastRenderAt >= STREAM_UPDATE_INTERVAL_MS) {
           lastRenderAt = Date.now();
-          paintAssistantMessage(true);
+          paintAssistantMessage();
         }
       }
 
       assistantText += decoder.decode();
-      paintAssistantMessage(false);
-    } catch {
+      const finalContent = assistantText.trim() || "Thinking...";
+
       updateConversation(convoId, (conversation) => ({
         ...conversation,
         messages: conversation.messages.map((message) =>
           message.id === assistantId
             ? {
                 ...message,
-                content: "Backend or AI service is unavailable. Start the local backend and Ollama models.",
+                content: finalContent,
+                isStreaming: false,
+              }
+            : message,
+        ),
+        updatedAt: Date.now(),
+      }));
+      setStreamingMessage((current) =>
+        current?.conversationId === convoId && current?.messageId === assistantId ? null : current,
+      );
+    } catch (error) {
+      setStreamingMessage((current) =>
+        current?.conversationId === convoId && current?.messageId === assistantId ? null : current,
+      );
+      updateConversation(convoId, (conversation) => ({
+        ...conversation,
+        messages: conversation.messages.map((message) =>
+          message.id === assistantId
+            ? {
+                ...message,
+                content:
+                  error?.message ||
+                  "Backend or AI service is unavailable. Start the backend and check your Groq API key.",
                 isStreaming: false,
               }
             : message,
@@ -448,6 +513,10 @@ function App() {
       });
 
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data?.detail || data?.error || "Image analysis failed.");
+      }
+
       updateConversation(convoId, (conversation) => ({
         ...conversation,
         messages: [
@@ -456,12 +525,18 @@ function App() {
         ],
         updatedAt: Date.now(),
       }));
-    } catch {
+    } catch (error) {
       updateConversation(convoId, (conversation) => ({
         ...conversation,
         messages: [
           ...conversation.messages,
-          { id: uid(), role: "assistant", content: "Image analysis failed. Check the backend and vision model." },
+          {
+            id: uid(),
+            role: "assistant",
+            content:
+              error?.message ||
+              "Image analysis failed. Check the backend and your Groq vision model setup.",
+          },
         ],
         updatedAt: Date.now(),
       }));
@@ -553,7 +628,7 @@ function App() {
           />
         ) : (
           <div className="chat-screen">
-            <ChatWindow mode={activeMode} messages={activeConversation?.messages || []} />
+            <ChatWindow messages={activeMessages} />
             <ChatInput mode={activeMode} onSend={sendMessage} onSendImage={sendImageMessage} />
             <div className="app-footer">Review important output before acting on it.</div>
           </div>

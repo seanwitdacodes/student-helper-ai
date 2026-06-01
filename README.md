@@ -1,33 +1,46 @@
 # Student Helper
 
-## Safer local startup
+## Groq backend
 
-Opening the frontend used to immediately call the backend warmup route, which could force Ollama to load a model into memory before you even sent a message. If that model is large, running the frontend, backend, and Ollama together can overwhelm a laptop.
+The app now talks to Groq instead of Ollama. That moves model inference off your computer, which usually makes the site feel much lighter and faster on laptops.
 
-The app now starts in a safer mode by default:
+The backend keeps the same routes:
 
-- Startup warmup is off unless you explicitly enable it.
-- Ollama model keep-alive defaults to `5m` instead of `30m`.
-- Chat history is not re-saved to `localStorage` on every streaming paint.
+- `POST /chat` for streamed text chat
+- `POST /vision` for image analysis
+- `POST /warmup` for an optional one-token health check
 
-## Optional environment variables
+By default, the backend uses fast Groq models for normal chat and a Groq vision model for image questions.
 
-Backend (`backend/.env`):
+## Setup
+
+Create `backend/.env`:
 
 ```env
 PORT=5050
-OLLAMA_BASE_URL=http://127.0.0.1:11434
-OLLAMA_KEEP_ALIVE=5m
-OLLAMA_ENABLE_WARMUP=false
-OLLAMA_CHAT_MODEL=llama3
-OLLAMA_FAST_MODEL=llama3
-OLLAMA_PRO_MODEL=llama3
-OLLAMA_VISION_MODEL=llava
+GROQ_API_KEY=your_groq_api_key_here
+GROQ_BASE_URL=https://api.groq.com/openai/v1
+GROQ_ENABLE_WARMUP=false
+GROQ_CHAT_MODEL=llama-3.1-8b-instant
+GROQ_FAST_MODEL=llama-3.1-8b-instant
+GROQ_PRO_MODEL=openai/gpt-oss-20b
+GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
 ```
 
-Frontend (`frontend/.env`):
+Frontend `frontend/.env`:
 
 ```env
 REACT_APP_API_BASE_URL=http://localhost:5050
 REACT_APP_ENABLE_WARMUP=false
 ```
+
+## Speed tips
+
+If you want the fastest feel with Groq, these changes usually help the most:
+
+- Keep `GROQ_FAST_MODEL` on a smaller, faster model like `llama-3.1-8b-instant`.
+- Use `GROQ_PRO_MODEL` only when you actually want heavier reasoning.
+- Use `Chat` unless you specifically need `Computer Mode`.
+- Keep prompts shorter when you want the fastest reply.
+- Leave warmup off unless you specifically want a startup connectivity check.
+- Avoid image analysis unless you need it, because multimodal requests are still heavier than plain chat.
