@@ -7,8 +7,10 @@ import fs from "fs";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5050;
-const GROQ_BASE_URL = process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
-const ENABLE_WARMUP = String(process.env.GROQ_ENABLE_WARMUP || "").toLowerCase() === "true";
+const GROQ_BASE_URL =
+  process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+const ENABLE_WARMUP =
+  String(process.env.GROQ_ENABLE_WARMUP || "").toLowerCase() === "true";
 const CHAT_MODEL = process.env.GROQ_CHAT_MODEL || "llama-3.1-8b-instant";
 const FAST_MODEL = process.env.GROQ_FAST_MODEL || CHAT_MODEL;
 const PRO_MODEL = process.env.GROQ_PRO_MODEL || "openai/gpt-oss-20b";
@@ -45,7 +47,7 @@ app.use(express.json());
 const upload = multer({ dest: "uploads/" });
 
 app.get("/", (_, res) => {
-  res.send("Student Helper AI backend running");
+  res.send("Operator AI backend running");
 });
 
 function safeDelete(path) {
@@ -62,7 +64,11 @@ function normalizeTier(value) {
 }
 
 function normalizeMode(value) {
-  if (value === COMPUTER_MODE || value === "Control" || value === "Automation") {
+  if (
+    value === COMPUTER_MODE ||
+    value === "Control" ||
+    value === "Automation"
+  ) {
     return COMPUTER_MODE;
   }
   return REGULAR_MODE;
@@ -84,23 +90,40 @@ function parseAssistantConfig(raw) {
   return {
     model: raw.model === "pro" ? "pro" : "fast",
     reasoning:
-      raw.reasoning === "deep" ? "deep" : raw.reasoning === "balanced" ? "balanced" : "fast",
+      raw.reasoning === "deep"
+        ? "deep"
+        : raw.reasoning === "balanced"
+          ? "balanced"
+          : "fast",
   };
 }
 
 function getOutputLimit(reasoning, isPro, useVision, mode) {
-  const profileKey = useVision ? "vision" : mode === COMPUTER_MODE ? "computer" : "regular";
-  const profile = OUTPUT_LIMITS[profileKey]?.[reasoning] || OUTPUT_LIMITS[profileKey]?.fast;
+  const profileKey = useVision
+    ? "vision"
+    : mode === COMPUTER_MODE
+      ? "computer"
+      : "regular";
+  const profile =
+    OUTPUT_LIMITS[profileKey]?.[reasoning] || OUTPUT_LIMITS[profileKey]?.fast;
   return isPro ? profile.pro : profile.free;
 }
 
 function getReasoningEffort(model, reasoning) {
   if (model.startsWith("openai/gpt-oss-")) {
-    return reasoning === "deep" ? "high" : reasoning === "balanced" ? "medium" : "low";
+    return reasoning === "deep"
+      ? "high"
+      : reasoning === "balanced"
+        ? "medium"
+        : "low";
   }
 
   if (model.startsWith("qwen/")) {
-    return reasoning === "deep" ? "high" : reasoning === "balanced" ? "medium" : "low";
+    return reasoning === "deep"
+      ? "high"
+      : reasoning === "balanced"
+        ? "medium"
+        : "low";
   }
 
   return null;
@@ -109,13 +132,22 @@ function getReasoningEffort(model, reasoning) {
 function getCapabilityConfig(tier, mode, useVision = false, assistant = {}) {
   const isPro = normalizeTier(tier) === "pro";
   const assistantConfig = parseAssistantConfig(assistant);
-  const shouldUseProModel = assistantConfig.model === "pro" && isPro && !useVision;
+  const shouldUseProModel =
+    assistantConfig.model === "pro" && isPro && !useVision;
   const normalizedMode = normalizeMode(mode);
-  const model = useVision ? VISION_MODEL : shouldUseProModel ? PRO_MODEL : FAST_MODEL;
+  const model = useVision
+    ? VISION_MODEL
+    : shouldUseProModel
+      ? PRO_MODEL
+      : FAST_MODEL;
 
   return {
     model,
-    temperature: useVision ? 0.2 : normalizedMode === COMPUTER_MODE ? 0.15 : 0.35,
+    temperature: useVision
+      ? 0.2
+      : normalizedMode === COMPUTER_MODE
+        ? 0.15
+        : 0.35,
     topP: 0.9,
     maxCompletionTokens: getOutputLimit(
       assistantConfig.reasoning,
@@ -134,19 +166,19 @@ function buildChatSystemPrompt(mode, tier, assistant = {}) {
 
   const common = [
     isPro
-      ? "You are Student Helper Pro AI, a fast assistant for school, work, and computer tasks."
-      : "You are Student Helper AI, a fast assistant for school, work, and everyday tasks.",
+      ? "You are Operator AI Pro, a fast assistant for school, work, and computer tasks."
+      : "You are Operator AI, a fast assistant for school, work, and everyday tasks.",
     "Be clear, accurate, direct, and practical.",
     "Be honest about limitations. Do not claim to browse the web, inspect local files, or control the device unless the result of that action is actually available in the conversation.",
     assistantConfig.reasoning === "deep"
       ? "Think carefully when needed, but keep the final answer concise."
       : assistantConfig.reasoning === "balanced"
-      ? "Balance speed with a small amount of structure."
-      : "Prefer the fastest correct answer and avoid unnecessary detail.",
+        ? "Balance speed with a small amount of structure."
+        : "Prefer the fastest correct answer and avoid unnecessary detail.",
   ].join(" ");
 
   if (normalizedMode === COMPUTER_MODE) {
-    return `${common} You are in Computer Mode. Focus on commands, system actions, app workflows, debugging steps, and clear instructions for doing tasks on a computer. If you are not actually connected to a control tool, say that you are giving guidance rather than taking the action yourself.`;
+    return `${common} You are in Computer Control. Focus on commands, system actions, app workflows, debugging steps, and clear instructions for doing tasks on a computer. If you are not actually connected to a control tool, say that you are giving guidance rather than taking the action yourself.`;
   }
 
   return `${common} You are in Regular AI mode. Help with questions, writing, brainstorming, studying, coding guidance, and image-based follow-up questions when an image is attached.`;
@@ -155,7 +187,9 @@ function buildChatSystemPrompt(mode, tier, assistant = {}) {
 function getGroqApiKey() {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    throw new Error("Missing GROQ_API_KEY. Add it to backend/.env before starting the server.");
+    throw new Error(
+      "Missing GROQ_API_KEY. Add it to backend/.env before starting the server.",
+    );
   }
   return apiKey;
 }
@@ -258,7 +292,10 @@ function extractResponseText(data) {
     if (!Array.isArray(item?.content)) continue;
 
     for (const contentItem of item.content) {
-      if (contentItem?.type === "output_text" && typeof contentItem.text === "string") {
+      if (
+        contentItem?.type === "output_text" &&
+        typeof contentItem.text === "string"
+      ) {
         textParts.push(contentItem.text);
       }
     }
@@ -267,7 +304,13 @@ function extractResponseText(data) {
   return textParts.join("\n\n").trim();
 }
 
-async function askGroqVision(question, imageDataUrl, mode, tier, assistant = {}) {
+async function askGroqVision(
+  question,
+  imageDataUrl,
+  mode,
+  tier,
+  assistant = {},
+) {
   const config = getCapabilityConfig(tier, mode, true, assistant);
   const payload = {
     model: config.model,
@@ -315,8 +358,18 @@ app.post("/chat", async (req, res) => {
   const { message, mode, tier, assistant, stream } = req.body;
   const assistantConfig = parseAssistantConfig(assistant);
   const normalizedMode = normalizeMode(mode);
-  const config = getCapabilityConfig(tier, normalizedMode, false, assistantConfig);
-  const messages = buildChatMessages(message, normalizedMode, tier, assistantConfig);
+  const config = getCapabilityConfig(
+    tier,
+    normalizedMode,
+    false,
+    assistantConfig,
+  );
+  const messages = buildChatMessages(
+    message,
+    normalizedMode,
+    tier,
+    assistantConfig,
+  );
 
   try {
     if (stream) {
@@ -361,13 +414,26 @@ app.post("/warmup", async (req, res) => {
   const tier = req.body?.tier;
   const mode = req.body?.mode;
   const assistantConfig = parseAssistantConfig(req.body?.assistant);
-  const config = getCapabilityConfig(tier, normalizeMode(mode), false, assistantConfig);
+  const config = getCapabilityConfig(
+    tier,
+    normalizeMode(mode),
+    false,
+    assistantConfig,
+  );
 
   try {
-    await askGroqChat(buildChatMessages("Reply with OK.", normalizeMode(mode), tier, assistantConfig), {
-      ...config,
-      maxCompletionTokens: 1,
-    });
+    await askGroqChat(
+      buildChatMessages(
+        "Reply with OK.",
+        normalizeMode(mode),
+        tier,
+        assistantConfig,
+      ),
+      {
+        ...config,
+        maxCompletionTokens: 1,
+      },
+    );
 
     res.json({ ok: true });
   } catch {

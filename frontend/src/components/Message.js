@@ -228,7 +228,7 @@ const Message = memo(function Message({ role, content, isStreaming = false }) {
   const blocks = useMemo(() => (isStreaming ? [] : parseMessageBlocks(content)), [content, isStreaming]);
   const [copied, setCopied] = useState(false);
   const isAssistant = role === "assistant";
-  const author = isAssistant ? "Operator" : "You";
+  const author = isAssistant ? "Operator AI" : "You";
 
   const copyMessage = async () => {
     try {

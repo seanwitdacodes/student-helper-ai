@@ -14,7 +14,7 @@ const MAIN_ITEMS = [
   },
   {
     id: "computer",
-    label: "Computer Mode",
+    label: "Computer Control",
     note: "Browser and desktop help",
     mode: COMPUTER_MODE,
     icon: "O",
@@ -41,7 +41,10 @@ function formatRelativeTime(timestamp) {
 function getPreviewText(conversation) {
   const stableMessage = [...(conversation.messages || [])]
     .reverse()
-    .find((message) => !message?.isStreaming && String(message?.content || "").trim());
+    .find(
+      (message) =>
+        !message?.isStreaming && String(message?.content || "").trim(),
+    );
   const latest = String(stableMessage?.content || "").trim();
   if (latest) {
     return latest
@@ -79,14 +82,18 @@ function Sidebar({
   );
 
   return (
-    <aside className={`sidebar ${collapsed ? "is-collapsed" : ""} ${isOpen ? "is-open" : ""}`}>
+    <aside
+      className={`sidebar ${collapsed ? "is-collapsed" : ""} ${isOpen ? "is-open" : ""}`}
+    >
       <div className="sidebar-top">
         <div className="sidebar-brand-block">
           <BrandMark />
           {!collapsed && (
             <div className="sidebar-brand-copy">
-              <div className="sidebar-brand-title">Operator</div>
-              <div className="sidebar-brand-subtitle">Simple local AI with just two modes.</div>
+              <div className="sidebar-brand-title">Operator AI</div>
+              <div className="sidebar-brand-subtitle">
+                Simple local AI with just two modes.
+              </div>
             </div>
           )}
         </div>
@@ -102,7 +109,11 @@ function Sidebar({
         </button>
       </div>
 
-      <button className="new-chat-btn" onClick={onNewConversation} title="New chat">
+      <button
+        className="new-chat-btn"
+        onClick={onNewConversation}
+        title="New chat"
+      >
         <span className="sidebar-nav-icon" aria-hidden="true">
           +
         </span>
@@ -160,7 +171,9 @@ function Sidebar({
             onClick={() => onSelectConversation(conversation.id)}
             onContextMenu={(event) => {
               event.preventDefault();
-              if (window.confirm(`Delete "${conversation.title || "New chat"}"?`)) {
+              if (
+                window.confirm(`Delete "${conversation.title || "New chat"}"?`)
+              ) {
                 onDeleteConversation(conversation.id);
               }
             }}
@@ -168,20 +181,31 @@ function Sidebar({
             <div className="chat-item-top">
               {!collapsed ? (
                 <>
-                  <div className="chat-title">{conversation.title || "New chat"}</div>
-                  <span className="chat-time">{formatRelativeTime(conversation.updatedAt)}</span>
+                  <div className="chat-title">
+                    {conversation.title || "New chat"}
+                  </div>
+                  <span className="chat-time">
+                    {formatRelativeTime(conversation.updatedAt)}
+                  </span>
                 </>
               ) : (
-                <div className="chat-thread-index">{(conversation.title || "New chat").slice(0, 1)}</div>
+                <div className="chat-thread-index">
+                  {(conversation.title || "New chat").slice(0, 1)}
+                </div>
               )}
             </div>
-            {!collapsed && <div className="chat-preview">{getPreviewText(conversation)}</div>}
+            {!collapsed && (
+              <div className="chat-preview">{getPreviewText(conversation)}</div>
+            )}
           </button>
         ))}
       </div>
 
       {conversations.length > 8 && !collapsed && (
-        <button className="sidebar-show-more" onClick={() => setShowAllThreads((current) => !current)}>
+        <button
+          className="sidebar-show-more"
+          onClick={() => setShowAllThreads((current) => !current)}
+        >
           {showAllThreads ? "Show less" : "Show more"}
         </button>
       )}

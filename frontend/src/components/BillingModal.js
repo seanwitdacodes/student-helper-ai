@@ -2,14 +2,14 @@ import { useMemo, useState } from "react";
 
 const FULL_FEATURES = [
   "Faster AI responses on larger prompts",
-  "More capable Computer Mode help",
+  "More capable Computer Control help",
   "Longer conversation history",
   "Stronger local AI workspace",
 ];
 
 const FREE_FEATURES = [
   "Regular AI chat",
-  "Computer Mode access",
+  "Computer Control access",
   "Basic image analysis",
   "Starter local AI workspace",
 ];
@@ -40,8 +40,18 @@ function formatCardNumber(value) {
     .replace(/(\d{4})(?=\d)/g, "$1 ");
 }
 
-function BillingModal({ account, trialLengthDays = 7, onClose, onStartTrial, onUpgrade, onDowngrade, inline = false }) {
-  const [cardholder, setCardholder] = useState(account.paymentMethod?.holderName || "");
+function BillingModal({
+  account,
+  trialLengthDays = 7,
+  onClose,
+  onStartTrial,
+  onUpgrade,
+  onDowngrade,
+  inline = false,
+}) {
+  const [cardholder, setCardholder] = useState(
+    account.paymentMethod?.holderName || "",
+  );
   const [cardNumber, setCardNumber] = useState("");
   const [expiry, setExpiry] = useState(account.paymentMethod?.expiry || "");
   const [cvc, setCvc] = useState("");
@@ -88,171 +98,188 @@ function BillingModal({ account, trialLengthDays = 7, onClose, onStartTrial, onU
 
   const content = (
     <div className="billing-modal">
-        <div className="billing-header">
-          <div>
-            <div className="tool-eyebrow">{inline ? "Upgrade Operator" : "Billing"}</div>
-            <h3>{inline ? "Choose your Operator plan" : "Free, trial, and full version"}</h3>
+      <div className="billing-header">
+        <div>
+          <div className="tool-eyebrow">
+            {inline ? "Upgrade Operator AI" : "Billing"}
           </div>
-          {!inline && (
-            <button type="button" className="quiet-btn" onClick={onClose}>
-              Close
+          <h3>
+            {inline
+              ? "Choose your Operator AI plan"
+              : "Free, trial, and full version"}
+          </h3>
+        </div>
+        {!inline && (
+          <button type="button" className="quiet-btn" onClick={onClose}>
+            Close
+          </button>
+        )}
+      </div>
+
+      <div className="billing-plan-grid">
+        <div
+          className={`billing-plan-card ${account.tier === "free" ? "active" : ""}`}
+        >
+          <div className="plan-card-top">
+            <div>
+              <strong>Free</strong>
+              <span>Free</span>
+            </div>
+            {account.tier === "free" && (
+              <span className="plan-status-pill">Current</span>
+            )}
+          </div>
+          <div className="plan-price">$0</div>
+          <ul className="plan-feature-list">
+            {FREE_FEATURES.map((feature) => (
+              <li key={feature}>{feature}</li>
+            ))}
+          </ul>
+        </div>
+
+        <div className={`billing-plan-card ${isTrial ? "active" : ""}`}>
+          <div className="plan-card-top">
+            <div>
+              <strong>Free Trial</strong>
+              <span>No card required</span>
+            </div>
+            {isTrial && <span className="plan-status-pill">Current</span>}
+          </div>
+          <div className="plan-price">
+            $0
+            <small>{`/${trialLengthDays} days`}</small>
+          </div>
+          <ul className="plan-feature-list">
+            {FULL_FEATURES.map((feature) => (
+              <li key={feature}>{feature}</li>
+            ))}
+          </ul>
+          {isTrial ? (
+            <button type="button" className="quiet-btn" onClick={onDowngrade}>
+              End free trial
             </button>
+          ) : canStartTrial ? (
+            <button type="button" className="quiet-btn" onClick={onStartTrial}>
+              Start free trial
+            </button>
+          ) : (
+            <button type="button" className="quiet-btn" disabled>
+              Trial already used
+            </button>
+          )}
+          {isTrial && (
+            <div className="payment-method-summary">
+              {trialDaysLeft > 0
+                ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left in your free trial`
+                : "Your free trial ends today"}
+            </div>
           )}
         </div>
 
-        <div className="billing-plan-grid">
-          <div className={`billing-plan-card ${account.tier === "free" ? "active" : ""}`}>
-            <div className="plan-card-top">
-              <div>
-                <strong>Free</strong>
-                <span>Free</span>
-              </div>
-              {account.tier === "free" && <span className="plan-status-pill">Current</span>}
+        <div className={`billing-plan-card pro ${isFull ? "active" : ""}`}>
+          <div className="plan-card-top">
+            <div>
+              <strong>Full Version</strong>
+              <span>All premium tools unlocked</span>
             </div>
-            <div className="plan-price">$0</div>
-            <ul className="plan-feature-list">
-              {FREE_FEATURES.map((feature) => (
-                <li key={feature}>{feature}</li>
-              ))}
-            </ul>
+            {isFull && <span className="plan-status-pill pro">Current</span>}
           </div>
-
-          <div className={`billing-plan-card ${isTrial ? "active" : ""}`}>
-            <div className="plan-card-top">
-              <div>
-                <strong>Free Trial</strong>
-                <span>No card required</span>
-              </div>
-              {isTrial && <span className="plan-status-pill">Current</span>}
-            </div>
-            <div className="plan-price">
-              $0
-              <small>{`/${trialLengthDays} days`}</small>
-            </div>
-            <ul className="plan-feature-list">
-              {FULL_FEATURES.map((feature) => (
-                <li key={feature}>{feature}</li>
-              ))}
-            </ul>
-            {isTrial ? (
-              <button type="button" className="quiet-btn" onClick={onDowngrade}>
-                End free trial
-              </button>
-            ) : canStartTrial ? (
-              <button type="button" className="quiet-btn" onClick={onStartTrial}>
-                Start free trial
-              </button>
-            ) : (
-              <button type="button" className="quiet-btn" disabled>
-                Trial already used
-              </button>
-            )}
-            {isTrial && (
-              <div className="payment-method-summary">
-                {trialDaysLeft > 0
-                  ? `${trialDaysLeft} day${trialDaysLeft === 1 ? "" : "s"} left in your free trial`
-                  : "Your free trial ends today"}
-              </div>
-            )}
+          <div className="plan-price">
+            $1.99
+            <small>one time</small>
           </div>
-
-          <div className={`billing-plan-card pro ${isFull ? "active" : ""}`}>
-            <div className="plan-card-top">
-              <div>
-                <strong>Full Version</strong>
-                <span>All premium tools unlocked</span>
-              </div>
-              {isFull && <span className="plan-status-pill pro">Current</span>}
+          <ul className="plan-feature-list">
+            {FULL_FEATURES.map((feature) => (
+              <li key={feature}>{feature}</li>
+            ))}
+          </ul>
+          {isFull && account.paymentMethod && (
+            <div className="payment-method-summary">
+              {account.paymentMethod.brand} ending in{" "}
+              {account.paymentMethod.last4}
             </div>
-            <div className="plan-price">
-              $1.99
-              <small>one time</small>
-            </div>
-            <ul className="plan-feature-list">
-              {FULL_FEATURES.map((feature) => (
-                <li key={feature}>{feature}</li>
-              ))}
-            </ul>
-            {isFull && account.paymentMethod && (
-              <div className="payment-method-summary">
-                {account.paymentMethod.brand} ending in {account.paymentMethod.last4}
-              </div>
-            )}
-            {isFull && (
-              <button type="button" className="quiet-btn" onClick={onDowngrade}>
-                Return to Free
-              </button>
-            )}
-          </div>
+          )}
+          {isFull && (
+            <button type="button" className="quiet-btn" onClick={onDowngrade}>
+              Return to Free
+            </button>
+          )}
         </div>
+      </div>
 
-        {!isFull && (
-          <form className="billing-form" onSubmit={submit}>
-            <div className="deck-title">Payment for Full Version</div>
-            <p className="deck-meta">
-              Unlock everything for a one-time $1.99. Billing state in this prototype is still stored
-              locally in the browser.
-            </p>
+      {!isFull && (
+        <form className="billing-form" onSubmit={submit}>
+          <div className="deck-title">Payment for Full Version</div>
+          <p className="deck-meta">
+            Unlock everything for a one-time $1.99. Billing state in this
+            prototype is still stored locally in the browser.
+          </p>
 
+          <label className="stack-field">
+            <span>Cardholder name</span>
+            <input
+              type="text"
+              value={cardholder}
+              onChange={(event) => setCardholder(event.target.value)}
+              placeholder="Jordan Lee"
+            />
+          </label>
+
+          <label className="stack-field">
+            <span>Card number</span>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={cardNumber}
+              onChange={(event) =>
+                setCardNumber(formatCardNumber(event.target.value))
+              }
+              placeholder="4242 4242 4242 4242"
+            />
+          </label>
+
+          <div className="billing-inline-fields">
             <label className="stack-field">
-              <span>Cardholder name</span>
-              <input
-                type="text"
-                value={cardholder}
-                onChange={(event) => setCardholder(event.target.value)}
-                placeholder="Jordan Lee"
-              />
-            </label>
-
-            <label className="stack-field">
-              <span>Card number</span>
+              <span>Expiry</span>
               <input
                 type="text"
                 inputMode="numeric"
-                value={cardNumber}
-                onChange={(event) => setCardNumber(formatCardNumber(event.target.value))}
-                placeholder="4242 4242 4242 4242"
+                value={expiry}
+                onChange={(event) =>
+                  setExpiry(
+                    event.target.value
+                      .replace(/[^\d]/g, "")
+                      .slice(0, 4)
+                      .replace(/(\d{2})(\d{0,2})/, (_, mm, yy) =>
+                        yy ? `${mm}/${yy}` : mm,
+                      ),
+                  )
+                }
+                placeholder="12/28"
               />
             </label>
 
-            <div className="billing-inline-fields">
-              <label className="stack-field">
-                <span>Expiry</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={expiry}
-                  onChange={(event) =>
-                    setExpiry(
-                      event.target.value
-                        .replace(/[^\d]/g, "")
-                        .slice(0, 4)
-                        .replace(/(\d{2})(\d{0,2})/, (_, mm, yy) => (yy ? `${mm}/${yy}` : mm)),
-                    )
-                  }
-                  placeholder="12/28"
-                />
-              </label>
+            <label className="stack-field">
+              <span>CVC</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={cvc}
+                onChange={(event) =>
+                  setCvc(event.target.value.replace(/\D/g, "").slice(0, 4))
+                }
+                placeholder="123"
+              />
+            </label>
+          </div>
 
-              <label className="stack-field">
-                <span>CVC</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={cvc}
-                  onChange={(event) => setCvc(event.target.value.replace(/\D/g, "").slice(0, 4))}
-                  placeholder="123"
-                />
-              </label>
-            </div>
+          {error && <div className="inline-alert">{error}</div>}
 
-            {error && <div className="inline-alert">{error}</div>}
-
-            <div className="billing-actions">
-              <button type="submit">Unlock full version for $1.99</button>
-            </div>
-          </form>
-        )}
+          <div className="billing-actions">
+            <button type="submit">Unlock full version for $1.99</button>
+          </div>
+        </form>
+      )}
     </div>
   );
 

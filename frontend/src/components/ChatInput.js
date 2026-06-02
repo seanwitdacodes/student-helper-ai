@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const MODE_LABELS = {
   regular: "Chat",
-  computer: "Computer Mode",
+  computer: "Computer Control",
 };
 
 const MODE_HINTS = {
@@ -44,10 +44,10 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
   const placeholder = image
     ? "Ask about the image..."
     : centered
-    ? "Ask anything"
-    : mode === "computer"
-    ? "Tell Operator what you want to do on your computer..."
-    : "Ask anything private and local...";
+      ? "Ask anything"
+      : mode === "computer"
+        ? "Tell Operator AI what you want to do on your computer..."
+        : "Ask anything private and local...";
 
   return (
     <div
@@ -65,7 +65,9 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
       onDrop={(event) => {
         event.preventDefault();
         setIsDragging(false);
-        const file = [...(event.dataTransfer?.files || [])].find((item) => item.type.startsWith("image/"));
+        const file = [...(event.dataTransfer?.files || [])].find((item) =>
+          item.type.startsWith("image/"),
+        );
         if (file) {
           setImage(file);
         }
@@ -73,8 +75,12 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
     >
       <div className={`chat-input ${centered ? "is-minimal" : ""}`}>
         <div className="composer-topline">
-          <span className="composer-mode-badge">{MODE_LABELS[mode] || "Chat"}</span>
-          <span className="composer-hint">{MODE_HINTS[mode] || "Private local workspace"}</span>
+          <span className="composer-mode-badge">
+            {MODE_LABELS[mode] || "Chat"}
+          </span>
+          <span className="composer-hint">
+            {MODE_HINTS[mode] || "Private local workspace"}
+          </span>
         </div>
 
         <div className="input-main">
@@ -84,7 +90,9 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
             onChange={(event) => setText(event.target.value)}
             placeholder={placeholder}
             onPaste={(event) => {
-              const file = [...(event.clipboardData?.files || [])].find((item) => item.type.startsWith("image/"));
+              const file = [...(event.clipboardData?.files || [])].find(
+                (item) => item.type.startsWith("image/"),
+              );
               if (file) {
                 event.preventDefault();
                 setImage(file);
@@ -102,7 +110,11 @@ function ChatInput({ mode, centered = false, onSend, onSendImage }) {
             <div className="image-preview composer-image-pill">
               <div className="image-meta">
                 <span>{image.name || "Image selected"}</span>
-                <button type="button" className="clear-image" onClick={() => setImage(null)}>
+                <button
+                  type="button"
+                  className="clear-image"
+                  onClick={() => setImage(null)}
+                >
                   Remove
                 </button>
               </div>

@@ -5,7 +5,8 @@ import ChatInput from "./components/ChatInput";
 import "./App.css";
 
 const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:5050";
-const ACCOUNT_STORAGE_KEY = "studentHelperAccount";
+const ACCOUNT_STORAGE_KEY = "operatorAiAccount";
+const LEGACY_ACCOUNT_STORAGE_KEYS = ["studentHelperAccount"];
 const REGULAR_MODE = "regular";
 const COMPUTER_MODE = "computer";
 const CHAT_MODES = new Set([REGULAR_MODE, COMPUTER_MODE]);
@@ -13,6 +14,23 @@ const LEGACY_CHAT_MODES = new Set(["agent"]);
 const LEGACY_COMPUTER_MODES = new Set(["Control", "Automation"]);
 const STREAM_UPDATE_INTERVAL_MS = 180;
 const ENABLE_STARTUP_WARMUP = process.env.REACT_APP_ENABLE_WARMUP === "true";
+const HOME_SHORTCUTS = [
+  {
+    id: "draft",
+    label: "Write or edit",
+    prompt: "Help me write or edit something clearly and professionally.",
+  },
+  {
+    id: "research",
+    label: "Look something up",
+    prompt: "Help me research a topic and summarize the important points.",
+  },
+  {
+    id: "computer",
+    label: "Do something on my computer",
+    prompt: "Help me complete a task on my computer step by step.",
+  },
+];
 
 const defaultAccountState = {
   tier: "free",
@@ -39,11 +57,13 @@ function normalizeMode(mode) {
 }
 
 function getDefaultConversationTitle(mode = REGULAR_MODE) {
-  return mode === COMPUTER_MODE ? "Computer Mode" : "New chat";
+  return mode === COMPUTER_MODE ? "Computer Control" : "New chat";
 }
 
 function isDefaultConversationTitle(title, mode = REGULAR_MODE) {
-  const normalizedTitle = String(title || "").trim().toLowerCase();
+  const normalizedTitle = String(title || "")
+    .trim()
+    .toLowerCase();
   const defaults = new Set([
     getDefaultConversationTitle(mode).toLowerCase(),
     "new chat",
@@ -51,20 +71,45 @@ function isDefaultConversationTitle(title, mode = REGULAR_MODE) {
     "regular ai",
     "agent workspace",
     "computer mode",
+    "computer control",
     "control computer mode",
+    "control computer control",
     "update version",
     "upgrade operator",
+    "upgrade operator ai",
     "preferences",
   ]);
   return defaults.has(normalizedTitle);
+}
+
+function getStoredAccount() {
+  for (const key of [ACCOUNT_STORAGE_KEY, ...LEGACY_ACCOUNT_STORAGE_KEYS]) {
+    const raw = localStorage.getItem(key);
+    if (!raw) continue;
+
+    try {
+      return normalizeAccount(JSON.parse(raw));
+    } catch {
+      // ignore malformed storage
+    }
+  }
+
+  return defaultAccountState;
 }
 
 function normalizeAccount(value) {
   const requestedTier = hasPremiumAccess(value?.tier) ? value.tier : "free";
   const startedTrialAt = Number(value?.startedTrialAt) || 0;
   const trialEndsAt = Number(value?.trialEndsAt) || 0;
-  const hasUsedTrial = Boolean(value?.hasUsedTrial || startedTrialAt || trialEndsAt);
-  const tier = requestedTier === "trial" ? (trialEndsAt > Date.now() ? "trial" : "free") : requestedTier;
+  const hasUsedTrial = Boolean(
+    value?.hasUsedTrial || startedTrialAt || trialEndsAt,
+  );
+  const tier =
+    requestedTier === "trial"
+      ? trialEndsAt > Date.now()
+        ? "trial"
+        : "free"
+      : requestedTier;
 
   return {
     ...defaultAccountState,
@@ -74,14 +119,17 @@ function normalizeAccount(value) {
     startedTrialAt: hasUsedTrial ? startedTrialAt : 0,
     trialEndsAt: tier === "trial" ? trialEndsAt : 0,
     paymentMethod:
-      tier === "pro" && value?.paymentMethod && typeof value.paymentMethod === "object"
+      tier === "pro" &&
+      value?.paymentMethod &&
+      typeof value.paymentMethod === "object"
         ? value.paymentMethod
         : null,
   };
 }
 
 function normalizeConversation(conversation) {
-  const source = conversation && typeof conversation === "object" ? conversation : {};
+  const source =
+    conversation && typeof conversation === "object" ? conversation : {};
   const {
     assistant: _assistant,
     flashcards: _flashcards,
@@ -92,7 +140,9 @@ function normalizeConversation(conversation) {
   } = source;
   const mode = normalizeMode(rest.mode);
   const fallbackTitle = getDefaultConversationTitle(mode);
-  const title = isDefaultConversationTitle(rest.title, mode) ? fallbackTitle : rest.title || fallbackTitle;
+  const title = isDefaultConversationTitle(rest.title, mode)
+    ? fallbackTitle
+    : rest.title || fallbackTitle;
 
   return {
     id: rest.id || uid(),
@@ -150,10 +200,10 @@ function getHeaderCopy(conversation) {
 
   if (!hasMessages) {
     return {
-      title: "Operator",
+      title: "Operator AI",
       summary:
         mode === COMPUTER_MODE
-          ? "Computer Mode for browser research, desktop tasks, and guided workflows."
+          ? "Computer Control for browser research, desktop tasks, and guided workflows."
           : "Simple private AI chat for questions, drafts, notes, and study help.",
     };
   }
@@ -162,20 +212,45 @@ function getHeaderCopy(conversation) {
     title: conversation?.title || getDefaultConversationTitle(mode),
     summary:
       mode === COMPUTER_MODE
-        ? "Computer Mode is active."
+        ? "Computer Control is active."
         : "Chat is active.",
   };
 }
 
-function HomeScreen({ mode, summary, onOpenRegularMode, onOpenComputerMode, onSend, onSendImage }) {
+function HomeScreen({
+  mode,
+  summary,
+  onOpenRegularMode,
+  onOpenComputerMode,
+  onSend,
+  onSendImage,
+}) {
   return (
     <div className="home-screen">
       <div className="home-copy">
-        <h1>Operator</h1>
+        <h1>What&apos;s on the agenda today?</h1>
         <p>{summary}</p>
       </div>
 
-      <ChatInput mode={mode} centered onSend={onSend} onSendImage={onSendImage} />
+      <ChatInput
+        mode={mode}
+        centered
+        onSend={onSend}
+        onSendImage={onSendImage}
+      />
+
+      <div className="home-shortcut-row" aria-label="Suggested actions">
+        {HOME_SHORTCUTS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className="home-shortcut-btn"
+            onClick={() => onSend(item.prompt)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
 
       <div className="mode-switch-row is-home">
         <button
@@ -190,7 +265,7 @@ function HomeScreen({ mode, summary, onOpenRegularMode, onOpenComputerMode, onSe
           className={`mode-switch-btn ${mode === COMPUTER_MODE ? "active" : ""}`}
           onClick={onOpenComputerMode}
         >
-          Computer Mode
+          Computer Control
         </button>
       </div>
     </div>
@@ -213,23 +288,19 @@ function App() {
     return [createConversation(REGULAR_MODE)];
   });
 
-  const [activeId, setActiveId] = useState(() => localStorage.getItem("chatActiveId") || null);
-  const [account, setAccount] = useState(() => {
-    const raw = localStorage.getItem(ACCOUNT_STORAGE_KEY);
-    if (!raw) return defaultAccountState;
-    try {
-      return normalizeAccount(JSON.parse(raw));
-    } catch {
-      return defaultAccountState;
-    }
-  });
+  const [activeId, setActiveId] = useState(
+    () => localStorage.getItem("chatActiveId") || null,
+  );
+  const [account, setAccount] = useState(() => getStoredAccount());
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState(null);
   const hasStreamingMessages = useMemo(
     () =>
       conversations.some((conversation) =>
-        (conversation.messages || []).some((message) => Boolean(message.isStreaming)),
+        (conversation.messages || []).some((message) =>
+          Boolean(message.isStreaming),
+        ),
       ),
     [conversations],
   );
@@ -258,6 +329,9 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(account));
+    for (const key of LEGACY_ACCOUNT_STORAGE_KEYS) {
+      localStorage.removeItem(key);
+    }
   }, [account]);
 
   useEffect(() => {
@@ -301,7 +375,9 @@ function App() {
       fetch(`${API_BASE}/warmup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tier: hasPremiumAccess(account.tier) ? account.tier : "free" }),
+        body: JSON.stringify({
+          tier: hasPremiumAccess(account.tier) ? account.tier : "free",
+        }),
       }).catch(() => {
         // best-effort warmup
       });
@@ -311,11 +387,18 @@ function App() {
   }, [account.tier]);
 
   const activeConversation =
-    conversations.find((conversation) => conversation.id === activeId) || conversations[0];
+    conversations.find((conversation) => conversation.id === activeId) ||
+    conversations[0];
   const activeStreamingMessage =
-    streamingMessage?.conversationId === activeConversation?.id ? streamingMessage : null;
+    streamingMessage?.conversationId === activeConversation?.id
+      ? streamingMessage
+      : null;
   const activeMessages = useMemo(
-    () => mergeStreamingMessage(activeConversation?.messages || [], activeStreamingMessage),
+    () =>
+      mergeStreamingMessage(
+        activeConversation?.messages || [],
+        activeStreamingMessage,
+      ),
     [activeConversation?.messages, activeStreamingMessage],
   );
   const tier = hasPremiumAccess(account.tier) ? account.tier : "free";
@@ -328,12 +411,16 @@ function App() {
   const updateConversation = (id, updater) => {
     setConversations((previous) =>
       previous.map((conversation) =>
-        conversation.id === id ? normalizeConversation(updater(conversation)) : conversation,
+        conversation.id === id
+          ? normalizeConversation(updater(conversation))
+          : conversation,
       ),
     );
   };
 
-  const createAndFocusConversation = (mode = activeConversation?.mode || REGULAR_MODE) => {
+  const createAndFocusConversation = (
+    mode = activeConversation?.mode || REGULAR_MODE,
+  ) => {
     const fresh = createConversation(mode);
     setConversations((previous) => [fresh, ...previous]);
     setActiveId(fresh.id);
@@ -371,7 +458,12 @@ function App() {
       messages: [
         ...conversation.messages,
         { id: uid(), role: "user", content: text },
-        { id: assistantId, role: "assistant", content: "Thinking...", isStreaming: true },
+        {
+          id: assistantId,
+          role: "assistant",
+          content: "Thinking...",
+          isStreaming: true,
+        },
       ],
       updatedAt: Date.now(),
     }));
@@ -460,11 +552,17 @@ function App() {
         updatedAt: Date.now(),
       }));
       setStreamingMessage((current) =>
-        current?.conversationId === convoId && current?.messageId === assistantId ? null : current,
+        current?.conversationId === convoId &&
+        current?.messageId === assistantId
+          ? null
+          : current,
       );
     } catch (error) {
       setStreamingMessage((current) =>
-        current?.conversationId === convoId && current?.messageId === assistantId ? null : current,
+        current?.conversationId === convoId &&
+        current?.messageId === assistantId
+          ? null
+          : current,
       );
       updateConversation(convoId, (conversation) => ({
         ...conversation,
@@ -496,7 +594,10 @@ function App() {
       title: isDefaultConversationTitle(conversation.title, conversation.mode)
         ? makeTitle(prompt, "Image chat")
         : conversation.title,
-      messages: [...conversation.messages, { id: uid(), role: "user", content: prompt }],
+      messages: [
+        ...conversation.messages,
+        { id: uid(), role: "user", content: prompt },
+      ],
       updatedAt: Date.now(),
     }));
 
@@ -514,14 +615,20 @@ function App() {
 
       const data = await res.json();
       if (!res.ok) {
-        throw new Error(data?.detail || data?.error || "Image analysis failed.");
+        throw new Error(
+          data?.detail || data?.error || "Image analysis failed.",
+        );
       }
 
       updateConversation(convoId, (conversation) => ({
         ...conversation,
         messages: [
           ...conversation.messages,
-          { id: uid(), role: "assistant", content: data.answer || "No answer returned." },
+          {
+            id: uid(),
+            role: "assistant",
+            content: data.answer || "No answer returned.",
+          },
         ],
         updatedAt: Date.now(),
       }));
@@ -580,7 +687,9 @@ function App() {
         }}
         onDeleteConversation={(id) => {
           setConversations((previous) => {
-            const next = previous.filter((conversation) => conversation.id !== id);
+            const next = previous.filter(
+              (conversation) => conversation.id !== id,
+            );
             if (next.length === 0) {
               const fresh = createConversation(REGULAR_MODE);
               setActiveId(fresh.id);
@@ -594,7 +703,7 @@ function App() {
         }}
       />
 
-      <div className="chat-area">
+      <div className={`chat-area ${isCenteredChat ? "is-home" : ""}`}>
         <header className={`app-header ${isCenteredChat ? "is-home" : ""}`}>
           <div className="header-start">
             <button
@@ -629,8 +738,14 @@ function App() {
         ) : (
           <div className="chat-screen">
             <ChatWindow messages={activeMessages} />
-            <ChatInput mode={activeMode} onSend={sendMessage} onSendImage={sendImageMessage} />
-            <div className="app-footer">Review important output before acting on it.</div>
+            <ChatInput
+              mode={activeMode}
+              onSend={sendMessage}
+              onSendImage={sendImageMessage}
+            />
+            <div className="app-footer">
+              Review important output before acting on it.
+            </div>
           </div>
         )}
       </div>

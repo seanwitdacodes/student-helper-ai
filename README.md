@@ -1,4 +1,4 @@
-# Student Helper
+# Operator AI
 
 ## Groq backend
 
@@ -40,7 +40,7 @@ If you want the fastest feel with Groq, these changes usually help the most:
 
 - Keep `GROQ_FAST_MODEL` on a smaller, faster model like `llama-3.1-8b-instant`.
 - Use `GROQ_PRO_MODEL` only when you actually want heavier reasoning.
-- Use `Chat` unless you specifically need `Computer Mode`.
+- Use `Chat` unless you specifically need `Computer Control`.
 - Keep prompts shorter when you want the fastest reply.
 - Leave warmup off unless you specifically want a startup connectivity check.
 - Avoid image analysis unless you need it, because multimodal requests are still heavier than plain chat.

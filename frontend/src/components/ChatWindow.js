@@ -6,6 +6,7 @@ const LEGACY_WELCOME_MESSAGES = new Set([
   "Tutor Mode is ready. Ask anything and I’ll explain it step by step.",
   "Answer Mode is ready. Ask a question for a direct response.",
   "Control Computer Mode is ready.",
+  "Computer Control is ready.",
 ]);
 
 function ChatWindow({ messages }) {
@@ -17,7 +18,11 @@ function ChatWindow({ messages }) {
     () =>
       messages.filter(
         (message, index) =>
-          !(index === 0 && message.role === "assistant" && LEGACY_WELCOME_MESSAGES.has(String(message.content || ""))),
+          !(
+            index === 0 &&
+            message.role === "assistant" &&
+            LEGACY_WELCOME_MESSAGES.has(String(message.content || ""))
+          ),
       ),
     [messages],
   );
@@ -25,7 +30,11 @@ function ChatWindow({ messages }) {
 
   useEffect(() => {
     if (showWelcome) return;
-    if (!shouldStickToBottomRef.current && !visibleMessages[visibleMessages.length - 1]?.isStreaming) return;
+    if (
+      !shouldStickToBottomRef.current &&
+      !visibleMessages[visibleMessages.length - 1]?.isStreaming
+    )
+      return;
     bottomAnchorRef.current?.scrollIntoView({ block: "end" });
   }, [showWelcome, visibleMessages]);
 
@@ -36,13 +45,12 @@ function ChatWindow({ messages }) {
         className="thread-viewport"
         onScroll={(event) => {
           const element = event.currentTarget;
-          const distanceFromBottom = element.scrollHeight - element.scrollTop - element.clientHeight;
+          const distanceFromBottom =
+            element.scrollHeight - element.scrollTop - element.clientHeight;
           shouldStickToBottomRef.current = distanceFromBottom < 96;
         }}
       >
-        {showWelcome && (
-          <div className="thread-empty-state" />
-        )}
+        {showWelcome && <div className="thread-empty-state" />}
 
         {!showWelcome && (
           <div className="thread-stack">
@@ -54,7 +62,11 @@ function ChatWindow({ messages }) {
                 isStreaming={Boolean(message.isStreaming)}
               />
             ))}
-            <div ref={bottomAnchorRef} className="thread-bottom-anchor" aria-hidden="true" />
+            <div
+              ref={bottomAnchorRef}
+              className="thread-bottom-anchor"
+              aria-hidden="true"
+            />
           </div>
         )}
       </div>

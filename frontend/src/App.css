@@ -33,16 +33,27 @@
 html,
 body,
 #root {
+  height: 100%;
   min-height: 100%;
 }
 
 body {
   margin: 0;
+  min-height: 100dvh;
+  overflow: hidden;
   font-family: "Manrope", system-ui, sans-serif;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(255, 106, 61, 0.12), transparent 26%),
-    radial-gradient(circle at 85% 10%, rgba(255, 106, 61, 0.08), transparent 22%),
+    radial-gradient(
+      circle at top left,
+      rgba(255, 106, 61, 0.12),
+      transparent 26%
+    ),
+    radial-gradient(
+      circle at 85% 10%,
+      rgba(255, 106, 61, 0.08),
+      transparent 22%
+    ),
     linear-gradient(180deg, #0a0f16 0%, #0d1118 42%, #0b1016 100%);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -116,7 +127,9 @@ a {
 .layout {
   display: grid;
   grid-template-columns: 318px minmax(0, 1fr);
-  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
+  overflow: hidden;
 }
 
 .layout.sidebar-collapsed {
@@ -129,7 +142,8 @@ a {
   display: flex;
   flex-direction: column;
   gap: 16px;
-  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100dvh;
   padding: 20px 16px 18px;
   background:
     linear-gradient(180deg, rgba(255, 106, 61, 0.05), transparent 22%),
@@ -144,7 +158,11 @@ a {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at top right, rgba(255, 106, 61, 0.14), transparent 28%),
+    radial-gradient(
+      circle at top right,
+      rgba(255, 106, 61, 0.14),
+      transparent 28%
+    ),
     linear-gradient(180deg, transparent, rgba(255, 255, 255, 0.02));
   pointer-events: none;
 }
@@ -202,7 +220,9 @@ a {
     linear-gradient(135deg, rgba(255, 106, 61, 0.22), rgba(255, 106, 61, 0.08)),
     rgba(255, 255, 255, 0.03);
   border: 1px solid rgba(255, 106, 61, 0.3);
-  box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.02), 0 12px 26px rgba(0, 0, 0, 0.28);
+  box-shadow:
+    inset 0 0 24px rgba(255, 255, 255, 0.02),
+    0 12px 26px rgba(0, 0, 0, 0.28);
 }
 
 .brand-mark.is-hero {
@@ -393,7 +413,11 @@ a {
 .billing-plan-card,
 .billing-form {
   border: 1px solid var(--border);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.04),
+    rgba(255, 255, 255, 0.02)
+  );
   border-radius: var(--radius-lg);
 }
 
@@ -419,7 +443,11 @@ a {
 .highlight-card:hover,
 .preferences-card:hover {
   border-color: rgba(255, 106, 61, 0.36);
-  background: linear-gradient(180deg, rgba(255, 106, 61, 0.12), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 106, 61, 0.12),
+    rgba(255, 255, 255, 0.03)
+  );
   box-shadow: 0 14px 26px rgba(0, 0, 0, 0.18);
 }
 
@@ -551,10 +579,21 @@ a {
 
 .chat-area {
   min-width: 0;
+  min-height: 0;
+  height: 100dvh;
   padding: 28px 28px 24px;
   display: flex;
   flex-direction: column;
   gap: 20px;
+  overflow: hidden;
+}
+
+.chat-area.is-home {
+  position: relative;
+  justify-content: stretch;
+  gap: clamp(10px, 1.6vh, 18px);
+  padding-block: clamp(14px, 2.2dvh, 24px);
+  overflow: hidden;
 }
 
 .app-header {
@@ -562,8 +601,21 @@ a {
 }
 
 .app-header.is-home {
+  position: absolute;
+  top: 28px;
+  left: 28px;
+  right: 28px;
   justify-content: flex-end;
   min-height: 0;
+  pointer-events: none;
+}
+
+.app-header.is-home .header-start {
+  width: 100%;
+}
+
+.app-header.is-home .header-menu-btn {
+  pointer-events: auto;
 }
 
 .header-copy {
@@ -634,29 +686,32 @@ a {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 22px;
-  padding: clamp(16px, 5vh, 48px) 0;
+  gap: clamp(14px, 2.2dvh, 24px);
+  padding: clamp(24px, 6dvh, 72px) 0 clamp(12px, 4dvh, 36px);
 }
 
 .home-copy {
-  width: min(980px, 100%);
+  width: min(860px, 100%);
   display: grid;
-  gap: 12px;
+  gap: clamp(8px, 1.3dvh, 14px);
   text-align: center;
 }
 
 .home-copy h1 {
   margin: 0;
-  font-size: clamp(48px, 8vw, 78px);
+  max-width: 100%;
+  margin-inline: auto;
+  font-size: clamp(34px, 4.8vw, 58px);
+  line-height: 1.04;
   letter-spacing: -0.05em;
 }
 
 .home-copy p {
   margin: 0 auto;
-  max-width: 720px;
+  max-width: 620px;
   color: var(--muted);
-  font-size: clamp(16px, 2vw, 20px);
-  line-height: 1.65;
+  font-size: clamp(14px, 1.4vw, 18px);
+  line-height: 1.55;
 }
 
 .chat-screen {
@@ -694,7 +749,7 @@ a {
 }
 
 .mode-switch-row.is-home {
-  margin-top: 2px;
+  margin-top: 0;
 }
 
 .mode-switch-btn {
@@ -704,9 +759,28 @@ a {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.home-shortcut-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+}
+
+.home-shortcut-btn {
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.02);
+  color: rgba(255, 255, 255, 0.88);
+}
+
 .mode-switch-btn.active {
   border-color: rgba(255, 106, 61, 0.36);
-  background: linear-gradient(180deg, rgba(255, 106, 61, 0.16), rgba(255, 255, 255, 0.03));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 106, 61, 0.16),
+    rgba(255, 255, 255, 0.03)
+  );
   box-shadow: 0 14px 26px rgba(0, 0, 0, 0.18);
 }
 
@@ -737,7 +811,11 @@ a {
   border: 1px solid var(--border);
   border-radius: var(--radius-2xl);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.04),
+      rgba(255, 255, 255, 0.02)
+    ),
     rgba(12, 19, 29, 0.92);
   box-shadow: var(--shadow-lg);
 }
@@ -754,7 +832,11 @@ a {
   width: 260px;
   height: 260px;
   border-radius: 999px;
-  background: radial-gradient(circle, rgba(255, 106, 61, 0.18), transparent 72%);
+  background: radial-gradient(
+    circle,
+    rgba(255, 106, 61, 0.18),
+    transparent 72%
+  );
   pointer-events: none;
 }
 
@@ -805,7 +887,11 @@ a {
 
 .chat-welcome-preview {
   background:
-    linear-gradient(180deg, rgba(255, 106, 61, 0.08), rgba(255, 255, 255, 0.02)),
+    linear-gradient(
+      180deg,
+      rgba(255, 106, 61, 0.08),
+      rgba(255, 255, 255, 0.02)
+    ),
     rgba(10, 16, 24, 0.92);
 }
 
@@ -1015,7 +1101,11 @@ a {
 }
 
 .message.user .message-surface {
-  background: linear-gradient(180deg, rgba(255, 106, 61, 0.17), rgba(255, 106, 61, 0.08));
+  background: linear-gradient(
+    180deg,
+    rgba(255, 106, 61, 0.17),
+    rgba(255, 106, 61, 0.08)
+  );
   border-color: rgba(255, 106, 61, 0.22);
 }
 
@@ -1168,13 +1258,17 @@ a {
 }
 
 .chat-input-shell.is-centered {
-  max-width: 1040px;
+  max-width: min(1080px, 100%);
 }
 
 .chat-input {
   border: 1px solid rgba(255, 106, 61, 0.18);
   background:
-    linear-gradient(180deg, rgba(255, 106, 61, 0.08), rgba(255, 255, 255, 0.03)),
+    linear-gradient(
+      180deg,
+      rgba(255, 106, 61, 0.08),
+      rgba(255, 255, 255, 0.03)
+    ),
     rgba(14, 21, 31, 0.92);
   border-radius: 26px;
   padding: 14px;
@@ -1186,8 +1280,9 @@ a {
 }
 
 .chat-input-shell.is-centered .chat-input.is-minimal {
-  border-radius: 34px;
-  padding: 12px 14px 12px 18px;
+  border-radius: clamp(26px, 3vw, 34px);
+  padding: clamp(10px, 1.3dvh, 12px) clamp(12px, 1.2vw, 16px)
+    clamp(10px, 1.3dvh, 12px) clamp(16px, 1.8vw, 22px);
 }
 
 .composer-topline {
@@ -1227,7 +1322,7 @@ a {
 .chat-input-shell.is-centered textarea {
   min-height: 28px;
   padding: 0 8px 0 2px;
-  font-size: 18px;
+  font-size: clamp(16px, 1.5vw, 18px);
   line-height: 1.6;
 }
 
@@ -1288,10 +1383,10 @@ a {
 }
 
 .chat-input-shell.is-centered .composer-attach-btn {
-  width: 46px;
-  height: 46px;
+  width: clamp(42px, 4.6vw, 46px);
+  height: clamp(42px, 4.6vw, 46px);
   border-radius: 999px;
-  font-size: 28px;
+  font-size: clamp(24px, 2.4vw, 28px);
   line-height: 1;
 }
 
@@ -1313,11 +1408,11 @@ a {
 
 .chat-input-shell.is-centered .send-btn {
   min-width: 54px;
-  width: 54px;
-  height: 54px;
+  width: clamp(48px, 5vw, 54px);
+  height: clamp(48px, 5vw, 54px);
   padding: 0;
   border-radius: 999px;
-  font-size: 22px;
+  font-size: clamp(18px, 2.2vw, 22px);
 }
 
 .input-submit-group {
@@ -1377,7 +1472,11 @@ a {
   border: 1px solid var(--border);
   border-radius: var(--radius-2xl);
   background:
-    linear-gradient(180deg, rgba(255, 106, 61, 0.08), rgba(255, 255, 255, 0.03)),
+    linear-gradient(
+      180deg,
+      rgba(255, 106, 61, 0.08),
+      rgba(255, 255, 255, 0.03)
+    ),
     rgba(12, 19, 29, 0.94);
   box-shadow: var(--shadow-xl);
 }
@@ -1536,8 +1635,19 @@ a {
     padding: 18px;
   }
 
+  .chat-area.is-home {
+    padding-block: 16px;
+  }
+
+  .app-header.is-home {
+    top: 18px;
+    left: 18px;
+    right: 18px;
+  }
+
   .home-screen {
     gap: 18px;
+    padding-block: clamp(28px, 7dvh, 60px) clamp(12px, 4dvh, 26px);
   }
 
   .chat-welcome-grid,
@@ -1572,8 +1682,27 @@ a {
     padding: 14px;
   }
 
+  .chat-area.is-home {
+    padding-block: 14px;
+  }
+
+  .app-header.is-home {
+    top: 14px;
+    left: 14px;
+    right: 14px;
+  }
+
   .home-copy h1 {
-    font-size: clamp(40px, 14vw, 56px);
+    font-size: clamp(30px, 11vw, 48px);
+  }
+
+  .home-shortcut-row {
+    gap: 10px;
+  }
+
+  .home-shortcut-btn {
+    width: 100%;
+    justify-content: center;
   }
 
   .mode-switch-row.is-home {
@@ -1621,5 +1750,60 @@ a {
   .chat-input-shell.is-centered .input-toolbar.is-minimal {
     align-items: center;
     flex-direction: row;
+  }
+
+  .home-shortcut-btn,
+  .mode-switch-btn {
+    padding-block: 12px;
+  }
+}
+
+@media (max-height: 860px) {
+  .chat-area.is-home {
+    gap: 10px;
+    padding-block: 12px;
+  }
+
+  .home-screen {
+    gap: 12px;
+    padding-block: clamp(18px, 4dvh, 36px) 10px;
+  }
+
+  .home-copy h1 {
+    font-size: clamp(30px, 4.4vw, 48px);
+  }
+
+  .home-copy p {
+    font-size: clamp(13px, 1.3vw, 16px);
+    line-height: 1.45;
+  }
+
+  .home-shortcut-row {
+    gap: 10px;
+  }
+
+  .home-shortcut-btn,
+  .mode-switch-btn {
+    padding-block: 10px;
+  }
+}
+
+@media (max-height: 720px) {
+  .home-copy p,
+  .home-shortcut-row {
+    display: none;
+  }
+
+  .home-screen {
+    gap: 14px;
+    padding-block: 12px 6px;
+  }
+
+  .home-copy {
+    gap: 6px;
+  }
+
+  .chat-input-shell.is-centered .chat-input.is-minimal {
+    padding-block: 8px;
   }
 }
