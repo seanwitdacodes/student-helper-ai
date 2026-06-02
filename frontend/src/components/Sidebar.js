@@ -64,9 +64,7 @@ function Sidebar({
   mode,
   conversations,
   activeId,
-  collapsed = false,
   isOpen = false,
-  onToggleCollapse,
   onOpenRegularMode,
   onOpenComputerMode,
   onSelectConversation,
@@ -82,31 +80,17 @@ function Sidebar({
   );
 
   return (
-    <aside
-      className={`sidebar ${collapsed ? "is-collapsed" : ""} ${isOpen ? "is-open" : ""}`}
-    >
+    <aside className={`sidebar ${isOpen ? "is-open" : ""}`}>
       <div className="sidebar-top">
         <div className="sidebar-brand-block">
           <BrandMark />
-          {!collapsed && (
-            <div className="sidebar-brand-copy">
-              <div className="sidebar-brand-title">Operator AI</div>
-              <div className="sidebar-brand-subtitle">
-                Simple local AI with just two modes.
-              </div>
+          <div className="sidebar-brand-copy">
+            <div className="sidebar-brand-title">Operator AI</div>
+            <div className="sidebar-brand-subtitle">
+              Simple local AI with just two modes.
             </div>
-          )}
+          </div>
         </div>
-
-        <button
-          type="button"
-          className="sidebar-collapse-btn"
-          onClick={onToggleCollapse}
-          aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? ">>" : "<<"}
-        </button>
       </div>
 
       <button
@@ -117,14 +101,12 @@ function Sidebar({
         <span className="sidebar-nav-icon" aria-hidden="true">
           +
         </span>
-        {!collapsed && <span>New chat</span>}
+        <span>New chat</span>
       </button>
 
-      {!collapsed && (
-        <div className="sidebar-section-head">
-          <div className="section-label">Modes</div>
-        </div>
-      )}
+      <div className="sidebar-section-head">
+        <div className="section-label">Modes</div>
+      </div>
 
       <div className="sidebar-nav">
         {MAIN_ITEMS.map((item) => (
@@ -145,21 +127,17 @@ function Sidebar({
             <span className="sidebar-nav-icon" aria-hidden="true">
               {item.icon}
             </span>
-            {!collapsed && (
-              <span className="sidebar-nav-copy">
-                <strong>{item.label}</strong>
-                <span className="sidebar-nav-note">{item.note}</span>
-              </span>
-            )}
+            <span className="sidebar-nav-copy">
+              <strong>{item.label}</strong>
+              <span className="sidebar-nav-note">{item.note}</span>
+            </span>
           </button>
         ))}
       </div>
 
-      {!collapsed && (
-        <div className="sidebar-section-head threads-head">
-          <div className="section-label">Recent chats</div>
-        </div>
-      )}
+      <div className="sidebar-section-head threads-head">
+        <div className="section-label">Recent chats</div>
+      </div>
 
       <div className="chat-list">
         {visibleConversations.map((conversation) => (
@@ -179,29 +157,21 @@ function Sidebar({
             }}
           >
             <div className="chat-item-top">
-              {!collapsed ? (
-                <>
-                  <div className="chat-title">
-                    {conversation.title || "New chat"}
-                  </div>
-                  <span className="chat-time">
-                    {formatRelativeTime(conversation.updatedAt)}
-                  </span>
-                </>
-              ) : (
-                <div className="chat-thread-index">
-                  {(conversation.title || "New chat").slice(0, 1)}
+              <>
+                <div className="chat-title">
+                  {conversation.title || "New chat"}
                 </div>
-              )}
+                <span className="chat-time">
+                  {formatRelativeTime(conversation.updatedAt)}
+                </span>
+              </>
             </div>
-            {!collapsed && (
-              <div className="chat-preview">{getPreviewText(conversation)}</div>
-            )}
+            <div className="chat-preview">{getPreviewText(conversation)}</div>
           </button>
         ))}
       </div>
 
-      {conversations.length > 8 && !collapsed && (
+      {conversations.length > 8 && (
         <button
           className="sidebar-show-more"
           onClick={() => setShowAllThreads((current) => !current)}

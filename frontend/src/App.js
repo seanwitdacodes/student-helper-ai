@@ -292,7 +292,6 @@ function App() {
     () => localStorage.getItem("chatActiveId") || null,
   );
   const [account, setAccount] = useState(() => getStoredAccount());
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState(null);
   const hasStreamingMessages = useMemo(
@@ -655,7 +654,7 @@ function App() {
   const headerCopy = getHeaderCopy(activeConversation);
 
   return (
-    <div className={`layout ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+    <div className="layout">
       <div
         className={`sidebar-backdrop ${isSidebarOpen ? "is-visible" : ""}`}
         onClick={() => setIsSidebarOpen(false)}
@@ -666,9 +665,7 @@ function App() {
         mode={activeMode}
         conversations={orderedConversations}
         activeId={activeConversation?.id}
-        collapsed={isSidebarCollapsed}
         isOpen={isSidebarOpen}
-        onToggleCollapse={() => setIsSidebarCollapsed((current) => !current)}
         onOpenRegularMode={() => {
           openChatMode(REGULAR_MODE);
           setIsSidebarOpen(false);
@@ -709,10 +706,7 @@ function App() {
             <button
               type="button"
               className="header-menu-btn"
-              onClick={() => {
-                setIsSidebarCollapsed(false);
-                setIsSidebarOpen(true);
-              }}
+              onClick={() => setIsSidebarOpen(true)}
               aria-label="Open sidebar"
             >
               Menu

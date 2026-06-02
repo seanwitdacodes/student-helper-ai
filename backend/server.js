@@ -9,6 +9,8 @@ const app = express();
 const PORT = Number(process.env.PORT) || 5050;
 const GROQ_BASE_URL =
   process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+const OPENAI_BASE_URL =
+  process.env.OPENAI_BASE_URL || "https://api.openai.com/v1";
 const ENABLE_WARMUP =
   String(process.env.GROQ_ENABLE_WARMUP || "").toLowerCase() === "true";
 const CHAT_MODEL = process.env.GROQ_CHAT_MODEL || "llama-3.1-8b-instant";
@@ -16,6 +18,21 @@ const FAST_MODEL = process.env.GROQ_FAST_MODEL || CHAT_MODEL;
 const PRO_MODEL = process.env.GROQ_PRO_MODEL || "openai/gpt-oss-20b";
 const VISION_MODEL =
   process.env.GROQ_VISION_MODEL || "meta-llama/llama-4-scout-17b-16e-instruct";
+const OPENAI_API_KEY =
+  process.env.OPENAI_API_KEY || process.env.AI_API_KEY || "";
+const OPENAI_FAST_MODEL = process.env.OPENAI_FAST_MODEL || "gpt-4o-mini";
+const OPENAI_PRO_MODEL = process.env.OPENAI_PRO_MODEL || "gpt-4o";
+const OPENAI_VISION_MODEL =
+  process.env.OPENAI_VISION_MODEL || OPENAI_FAST_MODEL;
+const OLLAMA_BASE_URL =
+  process.env.OLLAMA_BASE_URL || "http://localhost:11434";
+const OLLAMA_CHAT_MODEL =
+  process.env.OLLAMA_CHAT_MODEL || "llama3:latest";
+const OLLAMA_VISION_MODEL =
+  process.env.OLLAMA_VISION_MODEL || "llava:latest";
+const REQUESTED_AI_PROVIDER = String(process.env.AI_PROVIDER || "")
+  .trim()
+  .toLowerCase();
 const REGULAR_MODE = "regular";
 const COMPUTER_MODE = "computer";
 const DEFAULT_ASSISTANT_CONFIG = {
@@ -129,19 +146,77 @@ function getReasoningEffort(model, reasoning) {
   return null;
 }
 
+function getAiProvider() {
+  if (REQUESTED_AI_PROVIDER) {
+    if (REQUESTED_AI_PROVIDER === "groq") {
+      if (!process.env.GROQ_API_KEY) {
+        throw new Error(
+          "AI_PROVIDER is set to groq but GROQ_API_KEY is missing.",
+        );
+      }
+      return "groq";
+    }
+
+    if (REQUESTED_AI_PROVIDER === "openai") {
+      if (!OPENAI_API_KEY) {
+        throw new Error(
+          "AI_PROVIDER is set to openai but AI_API_KEY/OPENAI_API_KEY is missing.",
+        );
+      }
+      return "openai";
+    }
+
+    if (REQUESTED_AI_PROVIDER === "ollama") {
+      return "ollama";
+    }
+
+    throw new Error(
+      "AI_PROVIDER must be one of: groq, openai, ollama.",
+    );
+  }
+
+  if (process.env.GROQ_API_KEY) {
+    return "groq";
+  }
+
+  return "ollama";
+
+  if (OPENAI_API_KEY) {
+    return "openai";
+  }
+
+  throw new Error(
+    "Missing GROQ_API_KEY or AI_API_KEY/OPENAI_API_KEY. Add one to backend/.env before starting the server.",
+  );
+}
+
 function getCapabilityConfig(tier, mode, useVision = false, assistant = {}) {
+  const provider = getAiProvider();
   const isPro = normalizeTier(tier) === "pro";
   const assistantConfig = parseAssistantConfig(assistant);
   const shouldUseProModel =
     assistantConfig.model === "pro" && isPro && !useVision;
   const normalizedMode = normalizeMode(mode);
   const model = useVision
-    ? VISION_MODEL
+    ? provider === "groq"
+      ? VISION_MODEL
+      : provider === "openai"
+        ? OPENAI_VISION_MODEL
+        : OLLAMA_VISION_MODEL
     : shouldUseProModel
-      ? PRO_MODEL
-      : FAST_MODEL;
+      ? provider === "groq"
+        ? PRO_MODEL
+        : provider === "openai"
+          ? OPENAI_PRO_MODEL
+          : OLLAMA_CHAT_MODEL
+      : provider === "groq"
+        ? FAST_MODEL
+        : provider === "openai"
+          ? OPENAI_FAST_MODEL
+          : OLLAMA_CHAT_MODEL;
 
   return {
+    provider,
     model,
     temperature: useVision
       ? 0.2
@@ -155,7 +230,10 @@ function getCapabilityConfig(tier, mode, useVision = false, assistant = {}) {
       useVision,
       normalizedMode,
     ),
-    reasoningEffort: getReasoningEffort(model, assistantConfig.reasoning),
+    reasoningEffort:
+      provider === "groq"
+        ? getReasoningEffort(model, assistantConfig.reasoning)
+        : null,
   };
 }
 
@@ -184,24 +262,36 @@ function buildChatSystemPrompt(mode, tier, assistant = {}) {
   return `${common} You are in Regular AI mode. Help with questions, writing, brainstorming, studying, coding guidance, and image-based follow-up questions when an image is attached.`;
 }
 
-function getGroqApiKey() {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) {
-    throw new Error(
-      "Missing GROQ_API_KEY. Add it to backend/.env before starting the server.",
-    );
-  }
-  return apiKey;
+function getApiBaseUrl(provider) {
+  if (provider === "groq") return GROQ_BASE_URL;
+  if (provider === "openai") return OPENAI_BASE_URL;
+  return OLLAMA_BASE_URL;
 }
 
-function getGroqHeaders() {
+function getApiHeaders(provider) {
+  if (provider === "ollama") {
+    return {
+      "Content-Type": "application/json",
+    };
+  }
+
+  const apiKey =
+    provider === "groq" ? process.env.GROQ_API_KEY : OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      provider === "groq"
+        ? "Missing GROQ_API_KEY. Add it to backend/.env before starting the server."
+        : "Missing AI_API_KEY or OPENAI_API_KEY. Add one to backend/.env before starting the server.",
+    );
+  }
+
   return {
-    Authorization: `Bearer ${getGroqApiKey()}`,
+    Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
   };
 }
 
-async function throwGroqError(response, label) {
+async function throwApiError(response, label) {
   const text = await response.text();
   throw new Error(`${label} ${response.status}: ${text}`);
 }
@@ -214,14 +304,32 @@ function buildChatMessages(message, mode, tier, assistant = {}) {
 }
 
 function buildChatPayload(messages, config, stream = false) {
+  if (config.provider === "ollama") {
+    return {
+      model: config.model,
+      messages,
+      stream,
+      options: {
+        temperature: config.temperature,
+        top_p: config.topP,
+        num_predict: config.maxCompletionTokens,
+      },
+    };
+  }
+
   const payload = {
     model: config.model,
     messages,
     temperature: config.temperature,
     top_p: config.topP,
-    max_completion_tokens: config.maxCompletionTokens,
     stream,
   };
+
+  if (config.provider === "groq") {
+    payload.max_completion_tokens = config.maxCompletionTokens;
+  } else {
+    payload.max_tokens = config.maxCompletionTokens;
+  }
 
   if (config.reasoningEffort) {
     payload.reasoning_effort = config.reasoningEffort;
@@ -230,30 +338,43 @@ function buildChatPayload(messages, config, stream = false) {
   return payload;
 }
 
-async function askGroqChat(messages, config) {
-  const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+async function askChat(messages, config) {
+  const endpoint =
+    config.provider === "ollama" ? "/api/chat" : "/chat/completions";
+  const response = await fetch(`${getApiBaseUrl(config.provider)}${endpoint}`, {
     method: "POST",
-    headers: getGroqHeaders(),
+    headers: getApiHeaders(config.provider),
     body: JSON.stringify(buildChatPayload(messages, config, false)),
   });
 
   if (!response.ok) {
-    await throwGroqError(response, "Groq chat error");
+    await throwApiError(
+      response,
+      config.provider === "groq" ? "Groq chat error" : "OpenAI chat error",
+    );
   }
 
   const data = await response.json();
+  if (config.provider === "ollama") {
+    return data?.message?.content?.trim() || "";
+  }
   return data?.choices?.[0]?.message?.content?.trim() || "";
 }
 
-async function streamGroqChatResponse(messages, config, onChunk) {
-  const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+async function streamChatResponse(messages, config, onChunk) {
+  const endpoint =
+    config.provider === "ollama" ? "/api/chat" : "/chat/completions";
+  const response = await fetch(`${getApiBaseUrl(config.provider)}${endpoint}`, {
     method: "POST",
-    headers: getGroqHeaders(),
+    headers: getApiHeaders(config.provider),
     body: JSON.stringify(buildChatPayload(messages, config, true)),
   });
 
   if (!response.ok) {
-    await throwGroqError(response, "Groq chat error");
+    await throwApiError(
+      response,
+      config.provider === "groq" ? "Groq chat error" : "OpenAI chat error",
+    );
   }
 
   let buffer = "";
@@ -265,18 +386,32 @@ async function streamGroqChatResponse(messages, config, onChunk) {
 
     for (const rawLine of lines) {
       const line = rawLine.trim();
-      if (!line || line.startsWith(":") || !line.startsWith("data:")) {
+      if (!line) {
         continue;
       }
 
-      const data = line.slice(5).trim();
+      if (config.provider !== "ollama") {
+        if (line.startsWith(":") || !line.startsWith("data:")) {
+          continue;
+        }
+      }
+
+      const data =
+        config.provider === "ollama" ? line : line.slice(5).trim();
       if (!data) continue;
       if (data === "[DONE]") return;
 
       const parsed = JSON.parse(data);
-      const delta = parsed?.choices?.[0]?.delta?.content;
+      const delta =
+        config.provider === "ollama"
+          ? parsed?.message?.content
+          : parsed?.choices?.[0]?.delta?.content;
       if (typeof delta === "string" && delta) {
         onChunk(delta);
+      }
+
+      if (config.provider === "ollama" && parsed?.done) {
+        return;
       }
     }
   }
@@ -312,6 +447,85 @@ async function askGroqVision(
   assistant = {},
 ) {
   const config = getCapabilityConfig(tier, mode, true, assistant);
+
+  if (config.provider === "ollama") {
+    const rawBase64 = imageDataUrl.includes(";base64,")
+      ? imageDataUrl.split(";base64,")[1]
+      : imageDataUrl;
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/chat`, {
+      method: "POST",
+      headers: getApiHeaders("ollama"),
+      body: JSON.stringify({
+        model: config.model,
+        stream: false,
+        messages: [
+          {
+            role: "system",
+            content: buildChatSystemPrompt(mode, tier, assistant),
+          },
+          {
+            role: "user",
+            content: String(question || "").trim() || "Analyze this image.",
+            images: [rawBase64],
+          },
+        ],
+        options: {
+          temperature: config.temperature,
+          top_p: config.topP,
+          num_predict: config.maxCompletionTokens,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      await throwApiError(response, "Ollama vision error");
+    }
+
+    const data = await response.json();
+    return data?.message?.content?.trim() || "";
+  }
+
+  if (config.provider === "openai") {
+    const response = await fetch(`${OPENAI_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: getApiHeaders("openai"),
+      body: JSON.stringify({
+        model: config.model,
+        messages: [
+          {
+            role: "system",
+            content: buildChatSystemPrompt(mode, tier, assistant),
+          },
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: String(question || "").trim() || "Analyze this image.",
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: imageDataUrl,
+                },
+              },
+            ],
+          },
+        ],
+        max_tokens: config.maxCompletionTokens,
+        temperature: config.temperature,
+        top_p: config.topP,
+      }),
+    });
+
+    if (!response.ok) {
+      await throwApiError(response, "OpenAI vision error");
+    }
+
+    const data = await response.json();
+    return data?.choices?.[0]?.message?.content?.trim() || "";
+  }
+
   const payload = {
     model: config.model,
     instructions: buildChatSystemPrompt(mode, tier, assistant),
@@ -342,12 +556,12 @@ async function askGroqVision(
 
   const response = await fetch(`${GROQ_BASE_URL}/responses`, {
     method: "POST",
-    headers: getGroqHeaders(),
+    headers: getApiHeaders("groq"),
     body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
-    await throwGroqError(response, "Groq vision error");
+    await throwApiError(response, "Groq vision error");
   }
 
   const data = await response.json();
@@ -373,20 +587,28 @@ app.post("/chat", async (req, res) => {
 
   try {
     if (stream) {
+      let wroteAnyChunk = false;
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("X-Accel-Buffering", "no");
       res.flushHeaders?.();
 
-      await streamGroqChatResponse(messages, config, (text) => {
+      await streamChatResponse(messages, config, (text) => {
+        wroteAnyChunk = true;
         res.write(text);
       });
+
+      if (!wroteAnyChunk) {
+        throw new Error(
+          "AI returned an empty response. Check your API key and model configuration.",
+        );
+      }
 
       res.end();
       return;
     }
 
-    const answer = await askGroqChat(messages, config);
+    const answer = await askChat(messages, config);
 
     res.json({ answer });
   } catch (error) {
@@ -394,6 +616,9 @@ app.post("/chat", async (req, res) => {
       if (!res.headersSent) {
         res.status(502).end(error?.message || "AI backend error");
       } else {
+        res.write(
+          `\n[AI error] ${error?.message || "AI backend error"}`.trim(),
+        );
         res.end();
       }
       return;
@@ -422,7 +647,7 @@ app.post("/warmup", async (req, res) => {
   );
 
   try {
-    await askGroqChat(
+    await askChat(
       buildChatMessages(
         "Reply with OK.",
         normalizeMode(mode),
