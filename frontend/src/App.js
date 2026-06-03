@@ -4,9 +4,13 @@ import ChatWindow from "./components/ChatWindow";
 import ChatInput from "./components/ChatInput";
 import "./App.css";
 
-const API_BASE = process.env.REACT_APP_API_BASE_URL || "http://localhost:5050";
+const API_BASE = String(process.env.REACT_APP_API_BASE_URL || "").replace(
+  /\/$/,
+  "",
+);
 const ACCOUNT_STORAGE_KEY = "operatorAiAccount";
 const LEGACY_ACCOUNT_STORAGE_KEYS = ["studentHelperAccount"];
+const SIDEBAR_VISIBILITY_STORAGE_KEY = "operatorSidebarVisible";
 const REGULAR_MODE = "regular";
 const COMPUTER_MODE = "computer";
 const CHAT_MODES = new Set([REGULAR_MODE, COMPUTER_MODE]);
@@ -14,23 +18,11 @@ const LEGACY_CHAT_MODES = new Set(["agent"]);
 const LEGACY_COMPUTER_MODES = new Set(["Control", "Automation"]);
 const STREAM_UPDATE_INTERVAL_MS = 180;
 const ENABLE_STARTUP_WARMUP = process.env.REACT_APP_ENABLE_WARMUP === "true";
-const HOME_SHORTCUTS = [
-  {
-    id: "draft",
-    label: "Write or edit",
-    prompt: "Help me write or edit something clearly and professionally.",
-  },
-  {
-    id: "research",
-    label: "Look something up",
-    prompt: "Help me research a topic and summarize the important points.",
-  },
-  {
-    id: "computer",
-    label: "Do something on my computer",
-    prompt: "Help me complete a task on my computer step by step.",
-  },
-];
+const MOBILE_BREAKPOINT_PX = 920;
+
+function buildApiUrl(path) {
+  return API_BASE ? `${API_BASE}${path}` : path;
+}
 
 const defaultAccountState = {
   tier: "free",
@@ -57,7 +49,7 @@ function normalizeMode(mode) {
 }
 
 function getDefaultConversationTitle(mode = REGULAR_MODE) {
-  return mode === COMPUTER_MODE ? "Computer Control" : "New chat";
+  return mode === COMPUTER_MODE ? "Computer Mode" : "New chat";
 }
 
 function isDefaultConversationTitle(title, mode = REGULAR_MODE) {
@@ -83,8 +75,10 @@ function isDefaultConversationTitle(title, mode = REGULAR_MODE) {
 }
 
 function getStoredAccount() {
+  if (typeof window === "undefined") return defaultAccountState;
+
   for (const key of [ACCOUNT_STORAGE_KEY, ...LEGACY_ACCOUNT_STORAGE_KEYS]) {
-    const raw = localStorage.getItem(key);
+    const raw = window.localStorage.getItem(key);
     if (!raw) continue;
 
     try {
@@ -194,87 +188,77 @@ function mergeStreamingMessage(messages, streamingMessage) {
   return hasMatch ? nextMessages : messages;
 }
 
-function getHeaderCopy(conversation) {
-  const hasMessages = (conversation?.messages || []).length > 0;
-  const mode = conversation?.mode || REGULAR_MODE;
-
-  if (!hasMessages) {
-    return {
-      title: "Operator AI",
-      summary:
-        mode === COMPUTER_MODE
-          ? "Computer Control for browser research, desktop tasks, and guided workflows."
-          : "Simple private AI chat for questions, drafts, notes, and study help.",
-    };
-  }
-
-  return {
-    title: conversation?.title || getDefaultConversationTitle(mode),
-    summary:
-      mode === COMPUTER_MODE
-        ? "Computer Control is active."
-        : "Chat is active.",
-  };
+function getInitialSidebarVisibility() {
+  if (typeof window === "undefined") return true;
+  const stored = window.localStorage.getItem(SIDEBAR_VISIBILITY_STORAGE_KEY);
+  if (stored === null) return true;
+  return stored !== "false";
 }
 
-function HomeScreen({
+function getIsMobileViewport() {
+  if (typeof window === "undefined") return false;
+  return window.innerWidth <= MOBILE_BREAKPOINT_PX;
+}
+
+function ConversationStage({
   mode,
-  summary,
-  onOpenRegularMode,
-  onOpenComputerMode,
+  messages,
+  isHome,
   onSend,
   onSendImage,
+  draftValue,
+  draftVersion,
+  onDraftChange,
+  onSwitchMode,
 }) {
   return (
-    <div className="home-screen">
-      <div className="home-copy">
-        <h1>What&apos;s on the agenda today?</h1>
-        <p>{summary}</p>
+    <div className={`conversation-stage ${isHome ? "is-home" : "is-active"}`}>
+      <div className="hero-shell">
+        <div className="hero-copy">
+          <h1>operator</h1>
+        </div>
+
+        {isHome && (
+          <ChatInput
+            mode={mode}
+            centered
+            onSend={onSend}
+            onSendImage={onSendImage}
+            onSwitchMode={onSwitchMode}
+            seedText={draftValue}
+            seedVersion={draftVersion}
+            onDraftChange={onDraftChange}
+          />
+        )}
       </div>
 
-      <ChatInput
-        mode={mode}
-        centered
-        onSend={onSend}
-        onSendImage={onSendImage}
-      />
-
-      <div className="home-shortcut-row" aria-label="Suggested actions">
-        {HOME_SHORTCUTS.map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            className="home-shortcut-btn"
-            onClick={() => onSend(item.prompt)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="mode-switch-row is-home">
-        <button
-          type="button"
-          className={`mode-switch-btn ${mode === REGULAR_MODE ? "active" : ""}`}
-          onClick={onOpenRegularMode}
-        >
-          Chat
-        </button>
-        <button
-          type="button"
-          className={`mode-switch-btn ${mode === COMPUTER_MODE ? "active" : ""}`}
-          onClick={onOpenComputerMode}
-        >
-          Computer Control
-        </button>
-      </div>
+      {!isHome && (
+        <div className="thread-screen">
+          <ChatWindow messages={messages} />
+          <div className="thread-composer">
+            <ChatInput
+              mode={mode}
+              onSend={onSend}
+              onSendImage={onSendImage}
+              onSwitchMode={onSwitchMode}
+            />
+            <div className="thread-footnote">
+              Review important output before acting on it.
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function App() {
   const [conversations, setConversations] = useState(() => {
-    const raw = localStorage.getItem("chatHistory");
+    if (typeof window === "undefined") {
+      return [createConversation(REGULAR_MODE)];
+    }
+
+    const raw = window.localStorage.getItem("chatHistory");
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
@@ -288,12 +272,22 @@ function App() {
     return [createConversation(REGULAR_MODE)];
   });
 
-  const [activeId, setActiveId] = useState(
-    () => localStorage.getItem("chatActiveId") || null,
-  );
+  const [activeId, setActiveId] = useState(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem("chatActiveId") || null;
+  });
   const [account, setAccount] = useState(() => getStoredAccount());
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isDesktopSidebarVisible, setIsDesktopSidebarVisible] = useState(() =>
+    getInitialSidebarVisibility(),
+  );
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(() =>
+    getIsMobileViewport(),
+  );
+  const [homeDraft, setHomeDraft] = useState("");
+  const [homeDraftVersion, setHomeDraftVersion] = useState(0);
   const [streamingMessage, setStreamingMessage] = useState(null);
+
   const hasStreamingMessages = useMemo(
     () =>
       conversations.some((conversation) =>
@@ -311,27 +305,68 @@ function App() {
   }, [activeId, conversations]);
 
   useEffect(() => {
-    if (hasStreamingMessages) return undefined;
+    if (hasStreamingMessages || typeof window === "undefined") return undefined;
 
     const timeoutId = window.setTimeout(() => {
-      localStorage.setItem("chatHistory", JSON.stringify(conversations));
+      window.localStorage.setItem("chatHistory", JSON.stringify(conversations));
     }, 180);
 
     return () => window.clearTimeout(timeoutId);
   }, [conversations, hasStreamingMessages]);
 
   useEffect(() => {
-    if (activeId) {
-      localStorage.setItem("chatActiveId", activeId);
+    if (activeId && typeof window !== "undefined") {
+      window.localStorage.setItem("chatActiveId", activeId);
     }
   }, [activeId]);
 
   useEffect(() => {
-    localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(account));
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(account));
     for (const key of LEGACY_ACCOUNT_STORAGE_KEYS) {
-      localStorage.removeItem(key);
+      window.localStorage.removeItem(key);
     }
   }, [account]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(
+      SIDEBAR_VISIBILITY_STORAGE_KEY,
+      String(isDesktopSidebarVisible),
+    );
+  }, [isDesktopSidebarVisible]);
+
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      typeof window.matchMedia !== "function"
+    ) {
+      return undefined;
+    }
+
+    const mediaQuery = window.matchMedia(
+      `(max-width: ${MOBILE_BREAKPOINT_PX}px)`,
+    );
+    if (!mediaQuery) return undefined;
+
+    const syncViewport = (event) => {
+      const isMobile = Boolean(event?.matches);
+      setIsMobileViewport(isMobile);
+      if (!isMobile) {
+        setIsMobileSidebarOpen(false);
+      }
+    };
+
+    syncViewport(mediaQuery);
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", syncViewport);
+      return () => mediaQuery.removeEventListener("change", syncViewport);
+    }
+
+    mediaQuery.addListener(syncViewport);
+    return () => mediaQuery.removeListener(syncViewport);
+  }, []);
 
   useEffect(() => {
     if (account.tier !== "trial") return undefined;
@@ -371,7 +406,7 @@ function App() {
     if (typeof fetch !== "function") return undefined;
 
     const timeoutId = window.setTimeout(() => {
-      fetch(`${API_BASE}/warmup`, {
+      fetch(buildApiUrl("/warmup"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -384,6 +419,31 @@ function App() {
 
     return () => window.clearTimeout(timeoutId);
   }, [account.tier]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+
+    const handleKeyDown = (event) => {
+      const key = String(event.key || "").toLowerCase();
+
+      if ((event.metaKey || event.ctrlKey) && key === "b") {
+        event.preventDefault();
+        if (isMobileViewport) {
+          setIsMobileSidebarOpen((current) => !current);
+        } else {
+          setIsDesktopSidebarVisible((current) => !current);
+        }
+        return;
+      }
+
+      if (key === "escape" && isMobileViewport) {
+        setIsMobileSidebarOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isMobileViewport]);
 
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeId) ||
@@ -417,12 +477,12 @@ function App() {
     );
   };
 
-  const createAndFocusConversation = (
-    mode = activeConversation?.mode || REGULAR_MODE,
-  ) => {
+  const createAndFocusConversation = (mode = REGULAR_MODE) => {
     const fresh = createConversation(mode);
     setConversations((previous) => [fresh, ...previous]);
     setActiveId(fresh.id);
+    setHomeDraft("");
+    setHomeDraftVersion((current) => current + 1);
   };
 
   const openChatMode = (nextMode) => {
@@ -439,6 +499,14 @@ function App() {
     }
 
     createAndFocusConversation(nextMode);
+  };
+
+  const toggleSidebar = () => {
+    if (isMobileViewport) {
+      setIsMobileSidebarOpen((current) => !current);
+      return;
+    }
+    setIsDesktopSidebarVisible((current) => !current);
   };
 
   const sendMessage = async (text) => {
@@ -472,9 +540,11 @@ function App() {
       content: "Thinking...",
       isStreaming: true,
     });
+    setHomeDraft("");
+    setHomeDraftVersion((current) => current + 1);
 
     try {
-      const res = await fetch(`${API_BASE}/chat`, {
+      const res = await fetch(buildApiUrl("/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -599,6 +669,8 @@ function App() {
       ],
       updatedAt: Date.now(),
     }));
+    setHomeDraft("");
+    setHomeDraftVersion((current) => current + 1);
 
     const formData = new FormData();
     formData.append("image", image);
@@ -607,7 +679,7 @@ function App() {
     formData.append("tier", tier);
 
     try {
-      const res = await fetch(`${API_BASE}/vision`, {
+      const res = await fetch(buildApiUrl("/vision"), {
         method: "POST",
         body: formData,
       });
@@ -650,98 +722,122 @@ function App() {
   };
 
   const activeMode = activeConversation?.mode || REGULAR_MODE;
-  const isCenteredChat = (activeConversation?.messages || []).length === 0;
-  const headerCopy = getHeaderCopy(activeConversation);
+  const isHomeView = (activeConversation?.messages || []).length === 0;
+  const showFloatingToggle = isMobileViewport && !isMobileSidebarOpen;
 
   return (
-    <div className="layout">
-      <div
-        className={`sidebar-backdrop ${isSidebarOpen ? "is-visible" : ""}`}
-        onClick={() => setIsSidebarOpen(false)}
-        aria-hidden="true"
-      />
-
-      <Sidebar
-        mode={activeMode}
-        conversations={orderedConversations}
-        activeId={activeConversation?.id}
-        isOpen={isSidebarOpen}
-        onOpenRegularMode={() => {
-          openChatMode(REGULAR_MODE);
-          setIsSidebarOpen(false);
-        }}
-        onOpenComputerMode={() => {
-          openChatMode(COMPUTER_MODE);
-          setIsSidebarOpen(false);
-        }}
-        onSelectConversation={(id) => {
-          setActiveId(id);
-          setIsSidebarOpen(false);
-        }}
-        onNewConversation={() => {
-          createAndFocusConversation(activeConversation?.mode || REGULAR_MODE);
-          setIsSidebarOpen(false);
-        }}
-        onDeleteConversation={(id) => {
-          setConversations((previous) => {
-            const next = previous.filter(
-              (conversation) => conversation.id !== id,
-            );
-            if (next.length === 0) {
-              const fresh = createConversation(REGULAR_MODE);
-              setActiveId(fresh.id);
-              return [fresh];
-            }
-            if (activeId === id) {
-              setActiveId(next[0]?.id || null);
-            }
-            return next;
-          });
-        }}
-      />
-
-      <div className={`chat-area ${isCenteredChat ? "is-home" : ""}`}>
-        <header className={`app-header ${isCenteredChat ? "is-home" : ""}`}>
-          <div className="header-start">
-            <button
-              type="button"
-              className="header-menu-btn"
-              onClick={() => setIsSidebarOpen(true)}
-              aria-label="Open sidebar"
-            >
-              Menu
-            </button>
-            {!isCenteredChat && (
-              <div className="header-copy">
-                <h1>{headerCopy.title}</h1>
-                <p className="header-summary">{headerCopy.summary}</p>
-              </div>
-            )}
-          </div>
-        </header>
-
-        {isCenteredChat ? (
-          <HomeScreen
+    <div
+      className={`layout ${!isDesktopSidebarVisible ? "is-sidebar-hidden" : ""} ${isMobileViewport ? "is-mobile" : ""}`}
+    >
+      {!isMobileViewport && (
+        <div className="sidebar-shell">
+          <Sidebar
             mode={activeMode}
-            summary={headerCopy.summary}
-            onOpenRegularMode={() => openChatMode(REGULAR_MODE)}
-            onOpenComputerMode={() => openChatMode(COMPUTER_MODE)}
-            onSend={sendMessage}
-            onSendImage={sendImageMessage}
+            conversations={orderedConversations}
+            activeId={activeConversation?.id}
+            isMobile={false}
+            isVisible={isDesktopSidebarVisible}
+            onToggleSidebar={toggleSidebar}
+            onOpenRegularMode={() => {
+              createAndFocusConversation(REGULAR_MODE);
+            }}
+            onOpenComputerMode={() => {
+              openChatMode(COMPUTER_MODE);
+            }}
+            onSelectConversation={(id) => {
+              setActiveId(id);
+            }}
+            onDeleteConversation={(id) => {
+              setConversations((previous) => {
+                const next = previous.filter(
+                  (conversation) => conversation.id !== id,
+                );
+                if (next.length === 0) {
+                  const fresh = createConversation(REGULAR_MODE);
+                  setActiveId(fresh.id);
+                  return [fresh];
+                }
+                if (activeId === id) {
+                  setActiveId(next[0]?.id || null);
+                }
+                return next;
+              });
+            }}
           />
-        ) : (
-          <div className="chat-screen">
-            <ChatWindow messages={activeMessages} />
-            <ChatInput
-              mode={activeMode}
-              onSend={sendMessage}
-              onSendImage={sendImageMessage}
-            />
-            <div className="app-footer">
-              Review important output before acting on it.
-            </div>
-          </div>
+        </div>
+      )}
+
+      {isMobileViewport && (
+        <>
+          <div
+            className={`sidebar-backdrop ${isMobileSidebarOpen ? "is-visible" : ""}`}
+            onClick={() => setIsMobileSidebarOpen(false)}
+            aria-hidden="true"
+          />
+          <Sidebar
+            mode={activeMode}
+            conversations={orderedConversations}
+            activeId={activeConversation?.id}
+            isMobile
+            isVisible={isMobileSidebarOpen}
+            onToggleSidebar={() => setIsMobileSidebarOpen(false)}
+            onOpenRegularMode={() => {
+              createAndFocusConversation(REGULAR_MODE);
+              setIsMobileSidebarOpen(false);
+            }}
+            onOpenComputerMode={() => {
+              openChatMode(COMPUTER_MODE);
+              setIsMobileSidebarOpen(false);
+            }}
+            onSelectConversation={(id) => {
+              setActiveId(id);
+              setIsMobileSidebarOpen(false);
+            }}
+            onDeleteConversation={(id) => {
+              setConversations((previous) => {
+                const next = previous.filter(
+                  (conversation) => conversation.id !== id,
+                );
+                if (next.length === 0) {
+                  const fresh = createConversation(REGULAR_MODE);
+                  setActiveId(fresh.id);
+                  return [fresh];
+                }
+                if (activeId === id) {
+                  setActiveId(next[0]?.id || null);
+                }
+                return next;
+              });
+            }}
+          />
+        </>
+      )}
+
+      <div className={`main-shell ${isHomeView ? "is-home" : "is-thread"}`}>
+        {showFloatingToggle && !isMobileSidebarOpen && (
+          <button
+            type="button"
+            className="floating-sidebar-toggle"
+            onClick={toggleSidebar}
+            aria-label="Open sidebar"
+          >
+            <span />
+            <span />
+            <span />
+          </button>
         )}
+
+        <ConversationStage
+          mode={activeMode}
+          messages={activeMessages}
+          isHome={isHomeView}
+          onSend={sendMessage}
+          onSendImage={sendImageMessage}
+          draftValue={homeDraft}
+          draftVersion={homeDraftVersion}
+          onDraftChange={setHomeDraft}
+          onSwitchMode={openChatMode}
+        />
       </div>
     </div>
   );

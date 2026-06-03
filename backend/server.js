@@ -39,24 +39,139 @@ const DEFAULT_ASSISTANT_CONFIG = {
   model: "fast",
   reasoning: "fast",
 };
+const WEB_UI_DESIGN_BRIEF = `
+When the user asks for a sidebar, chat UI, web app layout, HTML/CSS/JS interface, or frontend design work, use this brief:
+
+The sidebar collapse/expand must be fully functional.
+
+When collapsed:
+- Sidebar shrinks from 280px to 76px
+- Only icons remain visible
+- Text labels fade out smoothly
+- Chat titles hide
+- Search bar becomes an icon-only button
+- Bottom profile/settings section becomes icon-only
+- Tooltips appear on hover for hidden labels
+- Main content automatically shifts to fill the extra space
+
+When expanded:
+- Sidebar returns to full width
+- Text labels fade back in
+- Chat history is fully visible
+- Search input is usable again
+- Profile/settings section expands
+- Main content resizes smoothly
+
+Animation requirements:
+- Smooth width transition
+- No layout jumping
+- Use CSS transitions
+- Collapse state should be saved in localStorage
+- Add a keyboard shortcut: Ctrl+B or Cmd+B to toggle sidebar
+- Add a clear toggle button with an arrow icon that changes direction
+
+Make sure the collapse button, mobile drawer, and desktop collapse behavior all work correctly together.
+
+Build a fully working, professional, unique sidebar for an AI chat web app using HTML, CSS, and JavaScript in one complete file.
+
+The sidebar must include:
+- App logo/name at the top
+- New Chat button
+- Search input for chats
+- Chat history grouped by Today, Yesterday, Previous 7 Days, Older
+- Each chat item should have:
+  - Icon
+  - Chat title
+  - Timestamp
+  - Hover state
+  - Active selected state
+  - Three-dot menu button
+- Collapsible sidebar button
+- Bottom account/settings section
+- Upgrade/Pro card
+- Light and dark mode support
+- Mobile slide-out drawer behavior
+- Smooth animations
+- Clean spacing
+- Rounded corners
+- Subtle borders and shadows
+- Professional typography
+- Fully functional JavaScript for:
+  - Opening/closing sidebar
+  - Collapsing sidebar
+  - Searching chats
+  - Selecting active chat
+  - Opening three-dot menus
+  - Switching light/dark mode
+  - Mobile overlay close
+
+Style direction:
+Make it unique but still professional. Do not copy ChatGPT exactly. Use a premium SaaS dashboard style with soft gradients, glassy panels, subtle icons, clean spacing, and modern micro-interactions.
+
+Important design details:
+- Sidebar width: 280px expanded, 76px collapsed
+- Border radius: 16px
+- Use CSS variables for colors
+- Use a modern font stack: Inter, SF Pro Display, system-ui, sans-serif
+- Background should feel clean, not too busy
+- Text must be high contrast and readable
+- Icons can use simple emoji or inline SVG
+- Chat items should truncate long titles with ellipsis
+- Sidebar should be keyboard accessible
+- Include aria-labels on buttons
+- Make it responsive for desktop, tablet, and mobile
+
+Create a clean, professional ChatGPT-style web app UI.
+
+Requirements:
+- Modern responsive layout
+- Left sidebar with:
+  - New chat button
+  - Search chats
+  - Chat history list
+  - Settings button at bottom
+- Main screen with:
+  - Header/title area
+  - Center welcome state
+  - Message area
+  - Sticky input box at bottom
+- Right sidebar with:
+  - Current chat info
+  - Tools/settings panel
+  - Helpful shortcuts
+- Sidebars should be collapsible
+- Mobile view should hide sidebars behind menu buttons
+- Smooth animations
+- Clean spacing, rounded corners, subtle shadows
+- Light and dark mode
+- Professional font and typography
+- Working buttons, toggles, and sidebar open/close behavior
+
+Use HTML, CSS, and JavaScript only.
+
+Make the UI feel premium, minimal, fast, and polished. Include all code in one complete working file.
+`.trim();
 
 const OUTPUT_LIMITS = {
   vision: {
-    fast: { free: 120, pro: 160 },
-    balanced: { free: 160, pro: 220 },
-    deep: { free: 220, pro: 280 },
+    fast: { free: 900, pro: 1400 },
+    balanced: { free: 1600, pro: 2400 },
+    deep: { free: 2400, pro: 3400 },
   },
   regular: {
-    fast: { free: 128, pro: 192 },
-    balanced: { free: 192, pro: 256 },
-    deep: { free: 280, pro: 360 },
+    fast: { free: 1200, pro: 1800 },
+    balanced: { free: 2200, pro: 3200 },
+    deep: { free: 3200, pro: 4200 },
   },
   computer: {
-    fast: { free: 160, pro: 220 },
-    balanced: { free: 220, pro: 300 },
-    deep: { free: 320, pro: 420 },
+    fast: { free: 1400, pro: 2200 },
+    balanced: { free: 2400, pro: 3400 },
+    deep: { free: 3400, pro: 4600 },
   },
 };
+const OUTPUT_LIMIT_OVERRIDE = Number(
+  process.env.AI_MAX_COMPLETION_TOKENS || 0,
+);
 
 app.use(cors());
 app.use(express.json());
@@ -116,6 +231,13 @@ function parseAssistantConfig(raw) {
 }
 
 function getOutputLimit(reasoning, isPro, useVision, mode) {
+  if (
+    Number.isFinite(OUTPUT_LIMIT_OVERRIDE) &&
+    OUTPUT_LIMIT_OVERRIDE > 0
+  ) {
+    return OUTPUT_LIMIT_OVERRIDE;
+  }
+
   const profileKey = useVision
     ? "vision"
     : mode === COMPUTER_MODE
@@ -249,17 +371,17 @@ function buildChatSystemPrompt(mode, tier, assistant = {}) {
     "Be clear, accurate, direct, and practical.",
     "Be honest about limitations. Do not claim to browse the web, inspect local files, or control the device unless the result of that action is actually available in the conversation.",
     assistantConfig.reasoning === "deep"
-      ? "Think carefully when needed, but keep the final answer concise."
+      ? "Think carefully when needed and fully answer every part of the user's request."
       : assistantConfig.reasoning === "balanced"
-        ? "Balance speed with a small amount of structure."
-        : "Prefer the fastest correct answer and avoid unnecessary detail.",
+        ? "Balance speed with clear structure and enough detail to finish the answer."
+        : "Prefer the fastest correct answer, but do not cut the answer short when the user needs more detail.",
   ].join(" ");
 
   if (normalizedMode === COMPUTER_MODE) {
     return `${common} You are in Computer Control. Focus on commands, system actions, app workflows, debugging steps, and clear instructions for doing tasks on a computer. If you are not actually connected to a control tool, say that you are giving guidance rather than taking the action yourself.`;
   }
 
-  return `${common} You are in Regular AI mode. Help with questions, writing, brainstorming, studying, coding guidance, and image-based follow-up questions when an image is attached.`;
+  return `${common} You are in Regular AI mode. Help with questions, writing, brainstorming, studying, coding guidance, and image-based follow-up questions when an image is attached. For frontend and UI work, follow this design brief closely: ${WEB_UI_DESIGN_BRIEF}`;
 }
 
 function getApiBaseUrl(provider) {
@@ -291,9 +413,38 @@ function getApiHeaders(provider) {
   };
 }
 
+function extractApiErrorMessage(text) {
+  try {
+    const parsed = JSON.parse(text);
+    const message = parsed?.error?.message;
+    if (typeof message === "string" && message.trim()) {
+      return message.trim();
+    }
+  } catch {
+    // fall back to raw text
+  }
+
+  return String(text || "").trim();
+}
+
 async function throwApiError(response, label) {
   const text = await response.text();
-  throw new Error(`${label} ${response.status}: ${text}`);
+  const detail = extractApiErrorMessage(text);
+  const normalizedDetail = detail.toLowerCase();
+
+  if (
+    response.status === 403 &&
+    (normalizedDetail.includes("access denied") ||
+      normalizedDetail.includes("network settings"))
+  ) {
+    throw new Error(
+      "The AI provider blocked this request from your current network. VPNs, proxies, or restricted exit regions often cause this. Try turning off the VPN, switching VPN servers, or using a different AI provider.",
+    );
+  }
+
+  throw new Error(
+    `${label} ${response.status}: ${detail || "Unknown API error"}`,
+  );
 }
 
 function buildChatMessages(message, mode, tier, assistant = {}) {
