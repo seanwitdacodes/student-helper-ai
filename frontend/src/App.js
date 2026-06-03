@@ -213,12 +213,12 @@ function ConversationStage({
 }) {
   return (
     <div className={`conversation-stage ${isHome ? "is-home" : "is-active"}`}>
-      <div className="hero-shell">
-        <div className="hero-copy">
-          <h1>operator</h1>
-        </div>
+      {isHome && (
+        <div className="hero-shell">
+          <div className="hero-copy">
+            <h1>operator</h1>
+          </div>
 
-        {isHome && (
           <ChatInput
             mode={mode}
             centered
@@ -229,8 +229,8 @@ function ConversationStage({
             seedVersion={draftVersion}
             onDraftChange={onDraftChange}
           />
-        )}
-      </div>
+        </div>
+      )}
 
       {!isHome && (
         <div className="thread-screen">

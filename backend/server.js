@@ -33,11 +33,18 @@ const OLLAMA_VISION_MODEL =
 const REQUESTED_AI_PROVIDER = String(process.env.AI_PROVIDER || "")
   .trim()
   .toLowerCase();
+const AUTO_PROVIDER_FALLBACK =
+  String(process.env.AI_AUTO_FALLBACK || "true").toLowerCase() !== "false";
 const REGULAR_MODE = "regular";
 const COMPUTER_MODE = "computer";
 const DEFAULT_ASSISTANT_CONFIG = {
   model: "fast",
   reasoning: "fast",
+};
+const OLLAMA_REACHABILITY_CACHE_TTL_MS = 30 * 1000;
+let ollamaReachabilityCache = {
+  checkedAt: 0,
+  isAvailable: false,
 };
 const WEB_UI_DESIGN_BRIEF = `
 When the user asks for a sidebar, chat UI, web app layout, HTML/CSS/JS interface, or frontend design work, use this brief:
@@ -301,19 +308,20 @@ function getAiProvider() {
     return "groq";
   }
 
-  return "ollama";
-
   if (OPENAI_API_KEY) {
     return "openai";
   }
 
-  throw new Error(
-    "Missing GROQ_API_KEY or AI_API_KEY/OPENAI_API_KEY. Add one to backend/.env before starting the server.",
-  );
+  return "ollama";
 }
 
-function getCapabilityConfig(tier, mode, useVision = false, assistant = {}) {
-  const provider = getAiProvider();
+function getCapabilityConfigForProvider(
+  provider,
+  tier,
+  mode,
+  useVision = false,
+  assistant = {},
+) {
   const isPro = normalizeTier(tier) === "pro";
   const assistantConfig = parseAssistantConfig(assistant);
   const shouldUseProModel =
@@ -357,6 +365,73 @@ function getCapabilityConfig(tier, mode, useVision = false, assistant = {}) {
         ? getReasoningEffort(model, assistantConfig.reasoning)
         : null,
   };
+}
+
+function getCapabilityConfig(tier, mode, useVision = false, assistant = {}) {
+  return getCapabilityConfigForProvider(
+    getAiProvider(),
+    tier,
+    mode,
+    useVision,
+    assistant,
+  );
+}
+
+async function isOllamaReachable(forceRefresh = false) {
+  const now = Date.now();
+  if (
+    !forceRefresh &&
+    now - ollamaReachabilityCache.checkedAt < OLLAMA_REACHABILITY_CACHE_TTL_MS
+  ) {
+    return ollamaReachabilityCache.isAvailable;
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 900);
+
+  try {
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+      method: "GET",
+      signal: controller.signal,
+    });
+    ollamaReachabilityCache = {
+      checkedAt: Date.now(),
+      isAvailable: response.ok,
+    };
+  } catch {
+    ollamaReachabilityCache = {
+      checkedAt: Date.now(),
+      isAvailable: false,
+    };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+
+  return ollamaReachabilityCache.isAvailable;
+}
+
+async function getProviderCandidates(preferredProvider) {
+  const providers = [preferredProvider];
+  if (!AUTO_PROVIDER_FALLBACK) {
+    return providers;
+  }
+
+  if (preferredProvider !== "groq" && process.env.GROQ_API_KEY) {
+    providers.push("groq");
+  }
+
+  if (preferredProvider !== "openai" && OPENAI_API_KEY) {
+    providers.push("openai");
+  }
+
+  if (
+    preferredProvider !== "ollama" &&
+    (await isOllamaReachable())
+  ) {
+    providers.push("ollama");
+  }
+
+  return providers;
 }
 
 function buildChatSystemPrompt(mode, tier, assistant = {}) {
@@ -427,19 +502,33 @@ function extractApiErrorMessage(text) {
   return String(text || "").trim();
 }
 
+function isNetworkBlockedMessage(detail) {
+  const normalizedDetail = String(detail || "").toLowerCase();
+  return (
+    normalizedDetail.includes("access denied") ||
+    normalizedDetail.includes("network settings")
+  );
+}
+
+function createNetworkBlockedError(detail) {
+  const error = new Error(
+    "The current AI provider blocked this request from your network. VPNs, proxies, or restricted exit regions often cause this. The app will try any configured fallback provider automatically. If none are available, switch VPN servers, add an OpenAI key, or run Ollama locally on this machine.",
+  );
+  error.code = "NETWORK_BLOCKED";
+  error.detail = detail;
+  return error;
+}
+
+function isNetworkBlockedError(error) {
+  return error?.code === "NETWORK_BLOCKED";
+}
+
 async function throwApiError(response, label) {
   const text = await response.text();
   const detail = extractApiErrorMessage(text);
-  const normalizedDetail = detail.toLowerCase();
 
-  if (
-    response.status === 403 &&
-    (normalizedDetail.includes("access denied") ||
-      normalizedDetail.includes("network settings"))
-  ) {
-    throw new Error(
-      "The AI provider blocked this request from your current network. VPNs, proxies, or restricted exit regions often cause this. Try turning off the VPN, switching VPN servers, or using a different AI provider.",
-    );
+  if (response.status === 403 && isNetworkBlockedMessage(detail)) {
+    throw createNetworkBlockedError(detail);
   }
 
   throw new Error(
@@ -512,6 +601,33 @@ async function askChat(messages, config) {
   return data?.choices?.[0]?.message?.content?.trim() || "";
 }
 
+async function askChatWithFallback(messages, options) {
+  const preferredProvider = getAiProvider();
+  const providers = await getProviderCandidates(preferredProvider);
+  let lastError = null;
+
+  for (const provider of providers) {
+    const config = getCapabilityConfigForProvider(
+      provider,
+      options.tier,
+      options.mode,
+      false,
+      options.assistant,
+    );
+
+    try {
+      return await askChat(messages, config);
+    } catch (error) {
+      lastError = error;
+      if (!isNetworkBlockedError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("No AI provider is available.");
+}
+
 async function streamChatResponse(messages, config, onChunk) {
   const endpoint =
     config.provider === "ollama" ? "/api/chat" : "/chat/completions";
@@ -568,6 +684,38 @@ async function streamChatResponse(messages, config, onChunk) {
   }
 }
 
+async function streamChatWithFallback(messages, options, onChunk) {
+  const preferredProvider = getAiProvider();
+  const providers = await getProviderCandidates(preferredProvider);
+  let lastError = null;
+
+  for (const provider of providers) {
+    const config = getCapabilityConfigForProvider(
+      provider,
+      options.tier,
+      options.mode,
+      false,
+      options.assistant,
+    );
+    let wroteChunkForProvider = false;
+
+    try {
+      await streamChatResponse(messages, config, (text) => {
+        wroteChunkForProvider = true;
+        onChunk(text);
+      });
+      return;
+    } catch (error) {
+      lastError = error;
+      if (wroteChunkForProvider || !isNetworkBlockedError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("No AI provider is available.");
+}
+
 function extractResponseText(data) {
   if (typeof data?.output_text === "string" && data.output_text.trim()) {
     return data.output_text.trim();
@@ -590,15 +738,14 @@ function extractResponseText(data) {
   return textParts.join("\n\n").trim();
 }
 
-async function askGroqVision(
+async function askVisionWithConfig(
   question,
   imageDataUrl,
   mode,
   tier,
   assistant = {},
+  config,
 ) {
-  const config = getCapabilityConfig(tier, mode, true, assistant);
-
   if (config.provider === "ollama") {
     const rawBase64 = imageDataUrl.includes(";base64,")
       ? imageDataUrl.split(";base64,")[1]
@@ -719,16 +866,50 @@ async function askGroqVision(
   return extractResponseText(data);
 }
 
+async function askVisionWithFallback(
+  question,
+  imageDataUrl,
+  mode,
+  tier,
+  assistant = {},
+) {
+  const preferredProvider = getAiProvider();
+  const providers = await getProviderCandidates(preferredProvider);
+  let lastError = null;
+
+  for (const provider of providers) {
+    const config = getCapabilityConfigForProvider(
+      provider,
+      tier,
+      mode,
+      true,
+      assistant,
+    );
+
+    try {
+      return await askVisionWithConfig(
+        question,
+        imageDataUrl,
+        mode,
+        tier,
+        assistant,
+        config,
+      );
+    } catch (error) {
+      lastError = error;
+      if (!isNetworkBlockedError(error)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("No AI provider is available.");
+}
+
 app.post("/chat", async (req, res) => {
   const { message, mode, tier, assistant, stream } = req.body;
   const assistantConfig = parseAssistantConfig(assistant);
   const normalizedMode = normalizeMode(mode);
-  const config = getCapabilityConfig(
-    tier,
-    normalizedMode,
-    false,
-    assistantConfig,
-  );
   const messages = buildChatMessages(
     message,
     normalizedMode,
@@ -742,12 +923,19 @@ app.post("/chat", async (req, res) => {
       res.setHeader("Content-Type", "text/plain; charset=utf-8");
       res.setHeader("Cache-Control", "no-cache, no-transform");
       res.setHeader("X-Accel-Buffering", "no");
-      res.flushHeaders?.();
 
-      await streamChatResponse(messages, config, (text) => {
-        wroteAnyChunk = true;
-        res.write(text);
-      });
+      await streamChatWithFallback(
+        messages,
+        {
+          tier,
+          mode: normalizedMode,
+          assistant: assistantConfig,
+        },
+        (text) => {
+          wroteAnyChunk = true;
+          res.write(text);
+        },
+      );
 
       if (!wroteAnyChunk) {
         throw new Error(
@@ -759,7 +947,11 @@ app.post("/chat", async (req, res) => {
       return;
     }
 
-    const answer = await askChat(messages, config);
+    const answer = await askChatWithFallback(messages, {
+      tier,
+      mode: normalizedMode,
+      assistant: assistantConfig,
+    });
 
     res.json({ answer });
   } catch (error) {
@@ -839,7 +1031,7 @@ app.post("/vision", upload.single("image"), async (req, res) => {
 
   try {
     const normalizedMode = normalizeMode(mode);
-    const answer = await askGroqVision(
+    const answer = await askVisionWithFallback(
       question,
       `data:${req.file.mimetype};base64,${imageBase64}`,
       normalizedMode,
