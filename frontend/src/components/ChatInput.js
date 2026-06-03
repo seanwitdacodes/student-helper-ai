@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const MODE_OPTIONS = [
   { value: "regular", label: "Search" },
-  { value: "computer", label: "Computer Mode" },
+  { value: "computer", label: "Computer Control" },
 ];
 
 const MODEL_OPTIONS = ["Balanced", "Fast", "Deep"];
@@ -142,7 +142,7 @@ function ChatInput({
     : centered
       ? "Type @ for connectors and sources"
       : mode === "computer"
-      ? "Tell Operator AI what to do on your computer..."
+      ? "Tell Operator AI what browser tabs to open..."
       : "Ask Operator AI anything...";
 
   const activeModeLabel =

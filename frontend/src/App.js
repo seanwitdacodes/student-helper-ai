@@ -49,7 +49,7 @@ function normalizeMode(mode) {
 }
 
 function getDefaultConversationTitle(mode = REGULAR_MODE) {
-  return mode === COMPUTER_MODE ? "Computer Mode" : "New chat";
+  return mode === COMPUTER_MODE ? "Computer Control" : "New chat";
 }
 
 function isDefaultConversationTitle(title, mode = REGULAR_MODE) {

@@ -1,18 +1,34 @@
 # Operator AI
 
-## Groq backend
+Operator AI has two main modes:
 
-The app now talks to Groq instead of Ollama. That moves model inference off your computer, which usually makes the site feel much lighter and faster on laptops.
+- `Search` for regular AI chat and writing help
+- `Computer Control` for local browser automation
 
-The backend keeps the same routes:
+`Computer Control` is command-based and uses Playwright locally, so supported browser commands can still work even when a VPN blocks Groq or OpenAI.
 
-- `POST /chat` for streamed text chat
-- `POST /vision` for image analysis
-- `POST /warmup` for an optional one-token health check
+## Supported Computer Control commands
 
-By default, the backend uses fast Groq models for normal chat and a Groq vision model for image questions.
+Try prompts like:
+
+- `Open YouTube`
+- `Search AP Calculus derivative rules`
+- `Open Google and search AP Calculus derivative rules`
+- `Open 3 tabs: Gmail, Google Docs, and ESPN`
+- `Go to Amazon and search running spikes`
+- `Close browser`
+
+## Safety rules
+
+Computer Control is intentionally limited:
+
+- It will not enter passwords or sign in for you
+- It will not make purchases or complete checkout
+- It will not submit forms, emails, or messages automatically
 
 ## Setup
+
+### Backend env
 
 Create `backend/.env`:
 
@@ -25,22 +41,65 @@ GROQ_CHAT_MODEL=llama-3.1-8b-instant
 GROQ_FAST_MODEL=llama-3.1-8b-instant
 GROQ_PRO_MODEL=openai/gpt-oss-20b
 GROQ_VISION_MODEL=meta-llama/llama-4-scout-17b-16e-instruct
+
+# Optional remote fallback
+OPENAI_API_KEY=
+OPENAI_BASE_URL=https://api.openai.com/v1
+OPENAI_FAST_MODEL=gpt-4o-mini
+OPENAI_PRO_MODEL=gpt-4o
+
+# Optional local browser-control / local AI behavior
+AI_AUTO_FALLBACK=true
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_CHAT_MODEL=llama3:latest
+OLLAMA_VISION_MODEL=llava:latest
+
+# Playwright browser visibility
+PLAYWRIGHT_HEADLESS=false
 ```
 
-Frontend `frontend/.env`:
+### Frontend env
+
+Create `frontend/.env`:
 
 ```env
 REACT_APP_API_BASE_URL=http://localhost:5050
 REACT_APP_ENABLE_WARMUP=false
 ```
 
-## Speed tips
+## Install
 
-If you want the fastest feel with Groq, these changes usually help the most:
+From `backend/`:
 
-- Keep `GROQ_FAST_MODEL` on a smaller, faster model like `llama-3.1-8b-instant`.
-- Use `GROQ_PRO_MODEL` only when you actually want heavier reasoning.
-- Use `Chat` unless you specifically need `Computer Control`.
-- Keep prompts shorter when you want the fastest reply.
-- Leave warmup off unless you specifically want a startup connectivity check.
-- Avoid image analysis unless you need it, because multimodal requests are still heavier than plain chat.
+```bash
+npm install
+npm run install:browsers
+```
+
+From `frontend/`:
+
+```bash
+npm install
+```
+
+## Run
+
+Backend:
+
+```bash
+cd backend
+npm start
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm start
+```
+
+## VPN notes
+
+- Regular AI chat still depends on whichever model provider is selected
+- If a VPN blocks Groq, the backend can fall back to OpenAI if `OPENAI_API_KEY` is configured
+- If you want the most VPN-resistant setup, run Ollama locally and keep using `Computer Control` for browser commands

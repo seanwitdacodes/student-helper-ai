@@ -147,7 +147,7 @@ function getPreviewText(conversation) {
   const latest = String(stableMessage?.content || "").trim();
   if (!latest) {
     return conversation.mode === COMPUTER_MODE
-      ? "Ready for desktop tasks."
+      ? "Ready for browser control."
       : "Ready for a new chat.";
   }
 
@@ -459,14 +459,14 @@ function Sidebar({
               setIsHistoryDialogOpen(false);
               onOpenComputerMode();
             }}
-            title="Computer Mode"
+            title="Computer Control"
           >
             <span className="sidebar-action-icon">
               <SidebarGlyph name="computer" />
             </span>
             <span className="sidebar-action-copy">
-              <strong>Computer Mode</strong>
-              <small>Guided browser and desktop help</small>
+              <strong>Computer Control</strong>
+              <small>Open tabs and run safe browser commands</small>
             </span>
           </button>
         </div>

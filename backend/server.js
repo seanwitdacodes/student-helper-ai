@@ -4,6 +4,7 @@ import cors from "cors";
 import fetch from "node-fetch";
 import multer from "multer";
 import fs from "fs";
+import { handleComputerControlCommand } from "./browserControl.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5050;
@@ -910,6 +911,45 @@ app.post("/chat", async (req, res) => {
   const { message, mode, tier, assistant, stream } = req.body;
   const assistantConfig = parseAssistantConfig(assistant);
   const normalizedMode = normalizeMode(mode);
+
+  if (normalizedMode === COMPUTER_MODE) {
+    try {
+      const answer = await handleComputerControlCommand(message);
+
+      if (stream) {
+        res.setHeader("Content-Type", "text/plain; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache, no-transform");
+        res.setHeader("X-Accel-Buffering", "no");
+        res.write(String(answer || ""));
+        res.end();
+        return;
+      }
+
+      res.json({ answer });
+    } catch (error) {
+      const detail =
+        error?.message ||
+        "Computer Control could not complete that browser command.";
+
+      if (stream) {
+        if (!res.headersSent) {
+          res.status(400).end(detail);
+        } else {
+          res.write(`\n[Computer Control error] ${detail}`.trim());
+          res.end();
+        }
+        return;
+      }
+
+      res.status(400).json({
+        error: "Computer Control error",
+        detail,
+      });
+    }
+
+    return;
+  }
+
   const messages = buildChatMessages(
     message,
     normalizedMode,
