@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conductor Panel</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <div>
+          <p class="eyebrow">Computer Control</p>
+          <h1>Conductor Panel</h1>
+        </div>
+        <div class="workspace-pill" id="workspaceState">Syncing…</div>
+      </header>
+
+      <label class="label" for="taskInput">Follow-up task</label>
+      <textarea
+        id="taskInput"
+        rows="4"
+        placeholder="Click the first result"
+      ></textarea>
+
+      <div class="actions">
+        <button id="runButton" class="primary-button" type="button">Send task</button>
+        <button id="reuseButton" class="secondary-button" type="button">
+          Continue workspace
+        </button>
+      </div>
+
+      <section class="status-panel">
+        <div class="status-header">
+          <span>Progress</span>
+          <button id="clearStatusButton" class="link-button" type="button">Clear</button>
+        </div>
+        <pre id="statusOutput">Waiting for a Computer Control task.</pre>
+      </section>
+
+      <section class="chat-panel">
+        <div class="tips-title">Conversation</div>
+        <div id="memoryOutput" class="chat-transcript">
+          <div class="chat-empty">No shared session memory yet.</div>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="./sidepanel.js"></script>
+  </body>
+</html>

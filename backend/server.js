@@ -4,7 +4,12 @@ import cors from "cors";
 import fetch from "node-fetch";
 import multer from "multer";
 import fs from "fs";
-import { handleComputerControlCommand } from "./browserControl.js";
+import {
+  createComputerControlPlan,
+  convertParsedComputerPlanToSteps,
+  handleComputerControlCommand,
+  handleComputerControlPlan,
+} from "./browserControl.js";
 
 const app = express();
 const PORT = Number(process.env.PORT) || 5050;
@@ -36,6 +41,9 @@ const REQUESTED_AI_PROVIDER = String(process.env.AI_PROVIDER || "")
   .toLowerCase();
 const AUTO_PROVIDER_FALLBACK =
   String(process.env.AI_AUTO_FALLBACK || "true").toLowerCase() !== "false";
+const ENABLE_COMPUTER_AI_PLANNER =
+  String(process.env.COMPUTER_MODE_USE_AI_PLANNER || "").toLowerCase() ===
+  "true";
 const REGULAR_MODE = "regular";
 const COMPUTER_MODE = "computer";
 const DEFAULT_ASSISTANT_CONFIG = {
@@ -160,6 +168,58 @@ Use HTML, CSS, and JavaScript only.
 Make the UI feel premium, minimal, fast, and polished. Include all code in one complete working file.
 `.trim();
 
+const COMPUTER_CONTROL_PLANNER_PROMPT = `
+You are the planning layer for Operator AI Computer Control.
+
+Your job is to convert the user's browser request into a very simple chronological JSON action plan.
+Do not explain anything. Return valid JSON only. No markdown. No code fences.
+
+Supported actions:
+- open_url
+- wait_for_page
+- site_search
+- click
+- fill
+- scroll
+- summarize
+- search_page
+- find_contact
+- copy_headline
+- go_back
+- go_forward
+
+Return one of these shapes:
+
+For executable plans:
+{
+  "type": "plan",
+  "steps": [
+    { "action": "open_url", "siteLabel": "YouTube", "url": "https://www.youtube.com" },
+    { "action": "wait_for_page" },
+    { "action": "site_search", "siteLabel": "YouTube", "query": "Dhar Mann", "directUrl": "https://www.youtube.com/results?search_query=Dhar%20Mann" }
+  ]
+}
+
+For blocked, risky, or ambiguous requests:
+{
+  "type": "message",
+  "message": "Short direct message for the user."
+}
+
+Rules:
+- NEVER treat the entire user sentence as a URL.
+- Separate destination websites from search queries and click targets.
+- Put steps in chronological order.
+- If the user says open/go to/navigate to, make open_url first.
+- After opening a site, add wait_for_page before any click, fill, search, or read action.
+- If the user says search/look up/find/browse/shop for/check out something on a site, use site_search with the query only.
+- For current-page follow-ups like "scroll down", "summarize this page", "search this page for pricing", "click login", "fill email with x", "go back", or "go forward", return only the follow-up step and do not add open_url.
+- Use official URLs for obvious sites.
+- You may use directUrl for known site searches when obvious.
+- Never include passwords, verification codes, payments, purchases, deletes, sending messages, or final form submits in a plan. Return type "message" instead.
+- Keep the plan minimal and reliable.
+`.trim();
+
 const OUTPUT_LIMITS = {
   vision: {
     fast: { free: 900, pro: 1400 },
@@ -180,6 +240,192 @@ const OUTPUT_LIMITS = {
 const OUTPUT_LIMIT_OVERRIDE = Number(
   process.env.AI_MAX_COMPLETION_TOKENS || 0,
 );
+const COMPUTER_TASK_POLL_TIMEOUT_MS = 90 * 1000;
+const COMPUTER_TASK_RETRY_WINDOW_MS = 30 * 1000;
+const computerSessions = new Map();
+let latestComputerSessionId = "";
+
+function createServerId(prefix = "id") {
+  return `${prefix}_${Date.now().toString(36)}_${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function getComputerSession(sessionId) {
+  return computerSessions.get(String(sessionId || "").trim()) || null;
+}
+
+function serializeComputerTask(task) {
+  if (!task) return null;
+  return {
+    id: task.id,
+    command: task.command,
+    context: Array.isArray(task.context) ? task.context : [],
+    status: task.status,
+    result: task.result || "",
+    error: task.error || "",
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    claimedAt: task.claimedAt || 0,
+  };
+}
+
+function serializeComputerSession(session) {
+  if (!session) return null;
+  return {
+    id: session.id,
+    status: session.status,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+    activeTask: serializeComputerTask(session.activeTask),
+    pendingCount: session.queue.length,
+    completedCount: session.completedTasks.length,
+    memory: session.memory.slice(-12),
+    recentEvents: session.events.slice(-8),
+  };
+}
+
+function pushComputerEvent(session, type, message, extra = {}) {
+  session.events.push({
+    id: createServerId("evt"),
+    type,
+    message,
+    createdAt: Date.now(),
+    ...extra,
+  });
+  session.events = session.events.slice(-30);
+}
+
+function promoteNextComputerTask(session) {
+  if (session.activeTask || !session.queue.length) return;
+  const nextTask = session.queue.shift();
+  nextTask.status = "pending";
+  nextTask.updatedAt = Date.now();
+  session.activeTask = nextTask;
+  session.updatedAt = Date.now();
+  pushComputerEvent(session, "task-pending", `Queued: ${nextTask.command}`, {
+    taskId: nextTask.id,
+  });
+}
+
+function createComputerSession() {
+  const session = {
+    id: createServerId("ccs"),
+    status: "idle",
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    activeTask: null,
+    queue: [],
+    completedTasks: [],
+    memory: [],
+    events: [],
+  };
+  computerSessions.set(session.id, session);
+  latestComputerSessionId = session.id;
+  pushComputerEvent(
+    session,
+    "session-created",
+    "Computer Control session is ready for Conductor.",
+  );
+  return session;
+}
+
+function getOrCreateComputerSession(sessionId = "") {
+  const existing = getComputerSession(sessionId);
+  if (existing) return existing;
+  if (sessionId && !existing) return null;
+  return createComputerSession();
+}
+
+function enqueueComputerTask(session, command, source = "web", context = []) {
+  const task = {
+    id: createServerId("task"),
+    command: String(command || "").trim(),
+    context: Array.isArray(context) ? context.slice(-16) : [],
+    source,
+    status: "queued",
+    result: "",
+    error: "",
+    claimedAt: 0,
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+  };
+  session.queue.push(task);
+  session.updatedAt = Date.now();
+  session.status = "waiting_for_extension";
+  latestComputerSessionId = session.id;
+  session.memory.push({
+    role: "user",
+    content: task.command,
+    source,
+    createdAt: task.createdAt,
+  });
+  session.memory = session.memory.slice(-40);
+  pushComputerEvent(session, "task-queued", `Sent to Conductor: ${task.command}`, {
+    taskId: task.id,
+    source,
+  });
+  promoteNextComputerTask(session);
+  return task;
+}
+
+function claimComputerTask(session) {
+  promoteNextComputerTask(session);
+  const task = session.activeTask;
+  if (!task) return null;
+  if (
+    task.status === "claimed" &&
+    Date.now() - Number(task.claimedAt || 0) < COMPUTER_TASK_RETRY_WINDOW_MS
+  ) {
+    return null;
+  }
+  task.status = "claimed";
+  task.claimedAt = Date.now();
+  task.updatedAt = Date.now();
+  session.status = "running";
+  session.updatedAt = Date.now();
+  pushComputerEvent(session, "task-claimed", `Conductor is working on: ${task.command}`, {
+    taskId: task.id,
+  });
+  return task;
+}
+
+function completeComputerTask(session, taskId, result, error = "") {
+  const task = session.activeTask;
+  if (!task || task.id !== taskId) {
+    throw new Error("That Computer Control task is no longer active.");
+  }
+
+  task.status = error ? "failed" : "completed";
+  task.result = String(result || "").trim();
+  task.error = String(error || "").trim();
+  task.updatedAt = Date.now();
+  session.updatedAt = Date.now();
+  session.status = error ? "failed" : "idle";
+  pushComputerEvent(
+    session,
+    error ? "task-failed" : "task-completed",
+    error || task.result || "Computer Control task finished.",
+    { taskId: task.id },
+  );
+  session.activeTask = null;
+  session.completedTasks.push({
+    ...task,
+  });
+  session.completedTasks = session.completedTasks.slice(-30);
+  session.memory.push({
+    role: error ? "system" : "assistant",
+    content: error || task.result || "Computer Control task finished.",
+    source: "extension",
+    createdAt: Date.now(),
+  });
+  session.memory = session.memory.slice(-40);
+  promoteNextComputerTask(session);
+  if (session.activeTask) {
+    session.status = "waiting_for_extension";
+  }
+  return task;
+}
 
 app.use(cors());
 app.use(express.json());
@@ -435,6 +681,22 @@ async function getProviderCandidates(preferredProvider) {
   return providers;
 }
 
+async function isComputerPlannerAvailable() {
+  if (!ENABLE_COMPUTER_AI_PLANNER) {
+    return false;
+  }
+
+  if (process.env.GROQ_API_KEY || OPENAI_API_KEY) {
+    return true;
+  }
+
+  if (REQUESTED_AI_PROVIDER === "ollama") {
+    return isOllamaReachable();
+  }
+
+  return false;
+}
+
 function buildChatSystemPrompt(mode, tier, assistant = {}) {
   const isPro = normalizeTier(tier) === "pro";
   const normalizedMode = normalizeMode(mode);
@@ -454,7 +716,7 @@ function buildChatSystemPrompt(mode, tier, assistant = {}) {
   ].join(" ");
 
   if (normalizedMode === COMPUTER_MODE) {
-    return `${common} You are in Computer Control. Focus on commands, system actions, app workflows, debugging steps, and clear instructions for doing tasks on a computer. If you are not actually connected to a control tool, say that you are giving guidance rather than taking the action yourself.`;
+    return `${common} You are in Computer Control. Focus on commands, system actions, app workflows, browser-task planning, and clear step-by-step help for doing tasks on a computer. If direct Chrome control is unavailable for a request, say exactly what the user should do next.`;
   }
 
   return `${common} You are in Regular AI mode. Help with questions, writing, brainstorming, studying, coding guidance, and image-based follow-up questions when an image is attached. For frontend and UI work, follow this design brief closely: ${WEB_UI_DESIGN_BRIEF}`;
@@ -542,6 +804,346 @@ function buildChatMessages(message, mode, tier, assistant = {}) {
     { role: "system", content: buildChatSystemPrompt(mode, tier, assistant) },
     { role: "user", content: String(message || "").trim() || "Hello." },
   ];
+}
+
+function stripJsonCodeFences(text) {
+  const trimmed = String(text || "").trim();
+  if (!trimmed.startsWith("```")) {
+    return trimmed;
+  }
+
+  return trimmed
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function parseJsonResponse(text) {
+  const cleaned = stripJsonCodeFences(text);
+
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    const start = cleaned.indexOf("{");
+    const end = cleaned.lastIndexOf("}");
+    if (start !== -1 && end !== -1 && end > start) {
+      return JSON.parse(cleaned.slice(start, end + 1));
+    }
+    throw new Error("AI planner returned invalid JSON.");
+  }
+}
+
+function normalizePlannerActionName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, "-");
+}
+
+function isValidHttpUrl(value) {
+  try {
+    const url = new URL(String(value || "").trim());
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function deriveSiteLabelFromUrl(url) {
+  try {
+    const hostname = new URL(url).hostname.replace(/^www\./i, "");
+    const root = hostname.split(".")[0] || hostname;
+    return root
+      .split(/[-_]/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(" ");
+  } catch {
+    return "Website";
+  }
+}
+
+function normalizeComputerPlanStep(rawStep, lastSiteLabel = "") {
+  const action = normalizePlannerActionName(rawStep?.action);
+
+  if (action === "open-url") {
+    const url = String(rawStep?.url || "").trim();
+    if (!isValidHttpUrl(url)) {
+      throw new Error("AI planner returned an invalid open_url step.");
+    }
+    return {
+      action,
+      url,
+      siteLabel:
+        String(rawStep?.siteLabel || rawStep?.site || "").trim() ||
+        deriveSiteLabelFromUrl(url),
+    };
+  }
+
+  if (action === "wait-for-page") {
+    return { action };
+  }
+
+  if (action === "site-search") {
+    const query = String(rawStep?.query || "").trim();
+    if (!query) {
+      throw new Error("AI planner returned an empty site_search query.");
+    }
+    const directUrl = String(rawStep?.directUrl || rawStep?.direct_url || "").trim();
+    if (directUrl && !isValidHttpUrl(directUrl)) {
+      throw new Error("AI planner returned an invalid site_search direct URL.");
+    }
+    return {
+      action,
+      query,
+      directUrl,
+      siteLabel:
+        String(rawStep?.siteLabel || rawStep?.site || "").trim() ||
+        lastSiteLabel ||
+        "the site",
+    };
+  }
+
+  if (action === "click") {
+    const target = String(rawStep?.target || rawStep?.text || "").trim();
+    if (!target) {
+      throw new Error("AI planner returned an empty click target.");
+    }
+    return { action, target };
+  }
+
+  if (action === "fill") {
+    const field = String(rawStep?.field || "").trim();
+    const value = String(rawStep?.value || "").trim();
+    if (!field || !value) {
+      throw new Error("AI planner returned an incomplete fill step.");
+    }
+    return { action, field, value };
+  }
+
+  if (action === "scroll") {
+    return {
+      action,
+      direction:
+        String(rawStep?.direction || "").trim().toLowerCase() === "up"
+          ? "up"
+          : "down",
+    };
+  }
+
+  if (action === "search-page") {
+    const query = String(rawStep?.query || "").trim();
+    if (!query) {
+      throw new Error("AI planner returned an empty search_page query.");
+    }
+    return { action, query };
+  }
+
+  if (
+    [
+      "summarize",
+      "find-contact",
+      "copy-headline",
+      "go-back",
+      "go-forward",
+    ].includes(action)
+  ) {
+    return { action };
+  }
+
+  throw new Error(`AI planner returned an unsupported action: ${action || "unknown"}`);
+}
+
+function normalizeComputerPlan(rawPlan) {
+  const resultType = String(
+    rawPlan?.type || rawPlan?.mode || rawPlan?.result_type || "plan",
+  )
+    .trim()
+    .toLowerCase();
+
+  if (resultType === "message") {
+    return {
+      type: "message",
+      message:
+        String(rawPlan?.message || rawPlan?.reason || "").trim() ||
+        "Computer Control needs a clearer instruction before it can continue.",
+    };
+  }
+
+  const rawSteps = Array.isArray(rawPlan?.steps)
+    ? rawPlan.steps
+    : Array.isArray(rawPlan?.plan?.steps)
+      ? rawPlan.plan.steps
+      : [];
+
+  if (!rawSteps.length) {
+    throw new Error("AI planner returned no steps.");
+  }
+
+  let lastSiteLabel = "";
+  const steps = rawSteps.map((rawStep) => {
+    const normalized = normalizeComputerPlanStep(rawStep, lastSiteLabel);
+    if (normalized.action === "open-url" && normalized.siteLabel) {
+      lastSiteLabel = normalized.siteLabel;
+    }
+    if (normalized.action === "site-search" && normalized.siteLabel) {
+      lastSiteLabel = normalized.siteLabel;
+    }
+    return normalized;
+  });
+
+  return {
+    type: "plan",
+    plan: {
+      kind: "ai-plan",
+      steps,
+    },
+  };
+}
+
+function collectExpectedComputerActions(message) {
+  const normalized = String(message || "").trim().toLowerCase();
+  const expected = new Set();
+
+  if (
+    /\b(open|go to|navigate to|launch|head to|head over to|take me to)\b/.test(
+      normalized,
+    )
+  ) {
+    expected.add("open-url");
+  }
+
+  if (/search(?:\s+this)?\s+page\s+for\b/.test(normalized)) {
+    expected.add("search-page");
+  } else if (
+    /\b(search(?:\s+up)?|look up|look for|look at|browse|shop for|check out)\b/.test(
+      normalized,
+    )
+  ) {
+    expected.add("site-search");
+  }
+
+  if (/\bclick(?:\s+on)?\b/.test(normalized)) {
+    expected.add("click");
+  }
+
+  if (/^fill\b|\bfill\s+.+\s+with\s+.+/.test(normalized)) {
+    expected.add("fill");
+  }
+
+  if (/\bscroll\s+(up|down)\b/.test(normalized)) {
+    expected.add("scroll");
+  }
+
+  if (/\b(?:summarize|summarise)\b/.test(normalized)) {
+    expected.add("summarize");
+  }
+
+  if (/\bfind\s+the\s+contact\s+page\b/.test(normalized)) {
+    expected.add("find-contact");
+  }
+
+  if (/\bcopy\s+the\s+main\s+headline\b/.test(normalized)) {
+    expected.add("copy-headline");
+  }
+
+  if (/\bgo\s+back\b/.test(normalized)) {
+    expected.add("go-back");
+  }
+
+  if (/\bgo\s+forward\b/.test(normalized)) {
+    expected.add("go-forward");
+  }
+
+  return expected;
+}
+
+function validateComputerPlanAgainstMessage(message, normalizedPlan) {
+  const expected = collectExpectedComputerActions(message);
+  if (!expected.size) {
+    return normalizedPlan;
+  }
+
+  const actual = new Set(
+    (normalizedPlan?.steps || []).map((step) => normalizePlannerActionName(step?.action)),
+  );
+
+  for (const action of expected) {
+    if (!actual.has(action)) {
+      throw new Error(`AI planner missed a required action: ${action}`);
+    }
+  }
+
+  return normalizedPlan;
+}
+
+async function planComputerControlWithAi(
+  message,
+  tier,
+  assistant = {},
+  history = [],
+) {
+  const compactHistory = Array.isArray(history)
+    ? history
+        .filter(
+          (item) =>
+            item &&
+            typeof item === "object" &&
+            String(item.content || "").trim(),
+        )
+        .slice(-10)
+        .map((item) => ({
+          role: item.role === "assistant" ? "assistant" : "user",
+          content: String(item.content || "").trim(),
+        }))
+    : [];
+  const plannerMessages = [
+    { role: "system", content: COMPUTER_CONTROL_PLANNER_PROMPT },
+    ...compactHistory,
+    {
+      role: "user",
+      content: String(message || "").trim() || "Open YouTube and search up FlightReacts.",
+    },
+  ];
+
+  const plannerAssistant = {
+    ...assistant,
+    reasoning:
+      assistant?.reasoning === "fast" ? "balanced" : assistant?.reasoning,
+  };
+
+  const response = await askChatWithFallback(plannerMessages, {
+    tier,
+    mode: COMPUTER_MODE,
+    assistant: plannerAssistant,
+  });
+
+  const normalizedPlan = normalizeComputerPlan(parseJsonResponse(response));
+  if (normalizedPlan.type === "plan") {
+    validateComputerPlanAgainstMessage(message, normalizedPlan.plan);
+  }
+  return normalizedPlan;
+}
+
+async function buildComputerControlPlan(
+  message,
+  tier,
+  assistant = {},
+  history = [],
+) {
+  const deterministicPlan = convertParsedComputerPlanToSteps(
+    createComputerControlPlan(message),
+  );
+
+  if (!(await isComputerPlannerAvailable())) {
+    return deterministicPlan;
+  }
+
+  try {
+    return await planComputerControlWithAi(message, tier, assistant, history);
+  } catch {
+    return deterministicPlan;
+  }
 }
 
 function buildChatPayload(messages, config, stream = false) {
@@ -907,6 +1509,182 @@ async function askVisionWithFallback(
   throw lastError || new Error("No AI provider is available.");
 }
 
+app.post("/computer/plan", async (req, res) => {
+  const { message, tier, assistant, history } = req.body || {};
+  const assistantConfig = parseAssistantConfig(assistant);
+  const trimmedMessage = String(message || "").trim();
+
+  if (!trimmedMessage) {
+    res.status(400).json({
+      error: "Computer Control error",
+      detail: "Computer Control needs a browser instruction first.",
+    });
+    return;
+  }
+
+  try {
+    const plan = await buildComputerControlPlan(
+      trimmedMessage,
+      tier,
+      assistantConfig,
+      Array.isArray(history) ? history : [],
+    );
+    res.json(plan);
+  } catch (error) {
+    res.status(400).json({
+      error: "Computer Control error",
+      detail:
+        error?.message ||
+        "Computer Control could not build a browser plan for that request.",
+    });
+  }
+});
+
+app.post("/computer/session", (req, res) => {
+  const requestedId = String(req.body?.sessionId || "").trim();
+  const session = getOrCreateComputerSession(requestedId);
+
+  if (!session) {
+    res.status(404).json({
+      error: "Computer Control error",
+      detail: "That Computer Control session no longer exists.",
+    });
+    return;
+  }
+
+  res.json({
+    session: serializeComputerSession(session),
+  });
+});
+
+app.get("/computer/session/active", (_req, res) => {
+  const session = getComputerSession(latestComputerSessionId);
+  res.json({
+    session: serializeComputerSession(session),
+  });
+});
+
+app.post("/computer/session/:sessionId/command", (req, res) => {
+  const session = getComputerSession(req.params.sessionId);
+  const command = String(req.body?.command || "").trim();
+  const source = String(req.body?.source || "web").trim() || "web";
+  const context = Array.isArray(req.body?.context) ? req.body.context : [];
+
+  if (!session) {
+    res.status(404).json({
+      error: "Computer Control error",
+      detail: "That Computer Control session no longer exists.",
+    });
+    return;
+  }
+
+  if (!command) {
+    res.status(400).json({
+      error: "Computer Control error",
+      detail: "Computer Control needs a command before it can continue.",
+    });
+    return;
+  }
+
+  const task = enqueueComputerTask(session, command, source, context);
+  res.json({
+    task: serializeComputerTask(task),
+    session: serializeComputerSession(session),
+  });
+});
+
+app.get("/computer/session/:sessionId/task/:taskId", (req, res) => {
+  const session = getComputerSession(req.params.sessionId);
+
+  if (!session) {
+    res.status(404).json({
+      error: "Computer Control error",
+      detail: "That Computer Control session no longer exists.",
+    });
+    return;
+  }
+
+  const task =
+    (session.activeTask && session.activeTask.id === req.params.taskId
+      ? session.activeTask
+      : null) ||
+    session.queue.find((item) => item.id === req.params.taskId) ||
+    session.completedTasks.find((item) => item.id === req.params.taskId) ||
+    session.events.find((item) => item.taskId === req.params.taskId);
+
+  if (!task) {
+    res.status(404).json({
+      error: "Computer Control error",
+      detail: "That Computer Control task was not found.",
+    });
+    return;
+  }
+
+  res.json({
+    task:
+      "command" in task
+        ? serializeComputerTask(task)
+        : {
+            id: req.params.taskId,
+            status: task.type === "task-failed" ? "failed" : "completed",
+            result: task.type === "task-failed" ? "" : task.message,
+            error: task.type === "task-failed" ? task.message : "",
+            updatedAt: task.createdAt,
+          },
+    session: serializeComputerSession(session),
+  });
+});
+
+app.post("/computer/session/:sessionId/next-task", (req, res) => {
+  const session = getComputerSession(req.params.sessionId);
+
+  if (!session) {
+    res.status(404).json({
+      error: "Computer Control error",
+      detail: "That Computer Control session no longer exists.",
+    });
+    return;
+  }
+
+  const task = claimComputerTask(session);
+  res.json({
+    task: serializeComputerTask(task),
+    session: serializeComputerSession(session),
+  });
+});
+
+app.post("/computer/session/:sessionId/task/:taskId/result", (req, res) => {
+  const session = getComputerSession(req.params.sessionId);
+
+  if (!session) {
+    res.status(404).json({
+      error: "Computer Control error",
+      detail: "That Computer Control session no longer exists.",
+    });
+    return;
+  }
+
+  try {
+    const task = completeComputerTask(
+      session,
+      req.params.taskId,
+      req.body?.result,
+      req.body?.error,
+    );
+    res.json({
+      task: serializeComputerTask(task),
+      session: serializeComputerSession(session),
+    });
+  } catch (error) {
+    res.status(400).json({
+      error: "Computer Control error",
+      detail:
+        error?.message ||
+        "Computer Control could not save that extension result.",
+    });
+  }
+});
+
 app.post("/chat", async (req, res) => {
   const { message, mode, tier, assistant, stream } = req.body;
   const assistantConfig = parseAssistantConfig(assistant);
@@ -914,7 +1692,15 @@ app.post("/chat", async (req, res) => {
 
   if (normalizedMode === COMPUTER_MODE) {
     try {
-      const answer = await handleComputerControlCommand(message);
+      const computerPlan = await buildComputerControlPlan(
+        message,
+        tier,
+        assistantConfig,
+      );
+      const answer =
+        computerPlan.type === "message"
+          ? computerPlan.message
+          : await handleComputerControlPlan(computerPlan.plan);
 
       if (stream) {
         res.setHeader("Content-Type", "text/plain; charset=utf-8");
@@ -929,7 +1715,7 @@ app.post("/chat", async (req, res) => {
     } catch (error) {
       const detail =
         error?.message ||
-        "Computer Control could not complete that browser command.";
+        "Computer Control could not complete that Chrome command.";
 
       if (stream) {
         if (!res.headersSent) {

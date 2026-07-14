@@ -466,7 +466,7 @@ function Sidebar({
             </span>
             <span className="sidebar-action-copy">
               <strong>Computer Control</strong>
-              <small>Open tabs and run safe browser commands</small>
+              <small>Recommended through the Conductor Chrome extension</small>
             </span>
           </button>
         </div>

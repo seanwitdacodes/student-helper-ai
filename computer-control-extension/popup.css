@@ -1,0 +1,227 @@
+:root {
+  color-scheme: dark;
+  --bg: #171210;
+  --panel: rgba(46, 34, 30, 0.92);
+  --panel-strong: #241b18;
+  --border: rgba(255, 255, 255, 0.08);
+  --text: #f8f0ea;
+  --muted: #cbb9ae;
+  --accent: #f2d1a6;
+  --accent-strong: #f7e2c7;
+  --danger: #ffb7a0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 360px;
+  background:
+    radial-gradient(circle at top left, rgba(171, 120, 89, 0.18), transparent 42%),
+    linear-gradient(180deg, #1d1614 0%, #120e0d 100%);
+  color: var(--text);
+  font-family: "Inter", "SF Pro Display", system-ui, sans-serif;
+}
+
+.popup-shell {
+  padding: 18px;
+}
+
+.popup-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+h1 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.workspace-pill {
+  max-width: 152px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 12px;
+  text-align: right;
+}
+
+.label,
+.tips-title,
+.status-header span {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 14px;
+  resize: vertical;
+  outline: none;
+  font: inherit;
+  line-height: 1.45;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+textarea:focus {
+  border-color: rgba(242, 209, 166, 0.55);
+  box-shadow: 0 0 0 3px rgba(242, 209, 166, 0.14);
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0 18px;
+}
+
+button {
+  appearance: none;
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.primary-button,
+.secondary-button {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 14px;
+}
+
+.primary-button {
+  background: linear-gradient(135deg, #f2d1a6 0%, #f8e7cf 100%);
+  color: #2a1f1b;
+  font-weight: 700;
+}
+
+.secondary-button {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.link-button {
+  background: transparent;
+  color: var(--accent);
+  padding: 0;
+}
+
+.status-panel,
+.tips-panel,
+.chat-panel {
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(32, 24, 21, 0.88);
+  padding: 14px;
+}
+
+.status-panel {
+  margin-bottom: 14px;
+}
+
+.chat-panel {
+  margin-bottom: 14px;
+}
+
+.status-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--accent-strong);
+  font-family: "SF Mono", "Menlo", monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.chat-transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 260px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.chat-empty {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.chat-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chat-bubble.is-user {
+  background: rgba(242, 209, 166, 0.12);
+  border-color: rgba(242, 209, 166, 0.18);
+}
+
+.chat-bubble.is-assistant {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.chat-bubble.is-system {
+  background: rgba(255, 183, 160, 0.1);
+  border-color: rgba(255, 183, 160, 0.18);
+}
+
+.chat-role {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.chat-text {
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.5;
+}

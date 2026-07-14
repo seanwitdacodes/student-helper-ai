@@ -2,31 +2,56 @@
 
 Operator AI has two main modes:
 
-- `Search` for regular AI chat and writing help
-- `Computer Control` for local browser automation
+- `Search` for regular AI chat, writing help, and guidance
+- `Computer Control` for browser tasks in Google Chrome
 
-`Computer Control` is command-based and uses Playwright locally, so supported browser commands can still work even when a VPN blocks Groq or OpenAI.
+## Computer Control architecture
 
-## Supported Computer Control commands
+The recommended Computer Control setup is the `Conductor` Chrome extension in [computer-control-extension](/Users/seana/Desktop/Coding/OperatorAI/computer-control-extension).
 
-Try prompts like:
+That extension gives you the behavior most people want:
 
-- `Open YouTube`
-- `Search AP Calculus derivative rules`
-- `Open Google and search AP Calculus derivative rules`
-- `Open 3 tabs: Gmail, Google Docs, and ESPN`
-- `Go to Amazon and search running spikes`
-- `Close browser`
+- same normal Chrome window
+- same signed-in Chrome profile
+- open the requested site in a new normal tab
+- follow-up actions stay in that remembered workspace tab
+- no incognito
+- no Apple Events JavaScript toggle
 
-## Safety rules
+The extension uses the local backend only as the planning layer. It asks the backend to break a natural-language request into simple chronological browser steps, then executes those steps inside your real Chrome window.
 
-Computer Control is intentionally limited:
+The website and extension can now share the same Computer Control session:
 
-- It will not enter passwords or sign in for you
-- It will not make purchases or complete checkout
-- It will not submit forms, emails, or messages automatically
+- the website can send a task into the shared session
+- Conductor can pick it up and execute it in Chrome
+- Conductor can open its side panel as the mini-chat worker on the target tab
+- follow-up commands from either side stay linked to the same workspace tab
 
-## Setup
+## Example commands
+
+- `Open youtube.com and search up flight reacts`
+- `Open Google Classroom`
+- `Continue and click Precalculus Honors`
+- `Scroll down`
+- `Summarize this page`
+- `Search this page for due dates`
+- `Fill email with sean@gmail.com`
+- `Open Amazon then look at ipads then scroll down`
+- `Head over to YouTube and look up Dhar Mann`
+
+## Chrome extension setup
+
+1. Start the backend with `cd backend && npm start`
+2. Open Chrome
+3. Go to `chrome://extensions`
+4. Turn on `Developer mode`
+5. Click `Load unpacked`
+6. Select [computer-control-extension](/Users/seana/Desktop/Coding/OperatorAI/computer-control-extension)
+7. Pin `Conductor`
+8. Open any normal tab in Chrome
+9. Click the extension icon and type a task
+
+## Web app setup
 
 ### Backend env
 
@@ -48,14 +73,14 @@ OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_FAST_MODEL=gpt-4o-mini
 OPENAI_PRO_MODEL=gpt-4o
 
-# Optional local browser-control / local AI behavior
+# Optional local model fallback
 AI_AUTO_FALLBACK=true
 OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_CHAT_MODEL=llama3:latest
 OLLAMA_VISION_MODEL=llava:latest
 
-# Playwright browser visibility
-PLAYWRIGHT_HEADLESS=false
+# Optional: enable AI planning for Computer Control
+COMPUTER_MODE_USE_AI_PLANNER=false
 ```
 
 ### Frontend env
@@ -69,16 +94,17 @@ REACT_APP_ENABLE_WARMUP=false
 
 ## Install
 
-From `backend/`:
+Backend:
 
 ```bash
+cd backend
 npm install
-npm run install:browsers
 ```
 
-From `frontend/`:
+Frontend:
 
 ```bash
+cd frontend
 npm install
 ```
 
@@ -100,6 +126,8 @@ npm start
 
 ## VPN notes
 
-- Regular AI chat still depends on whichever model provider is selected
+- Regular AI chat still depends on whichever remote or local model provider is active
 - If a VPN blocks Groq, the backend can fall back to OpenAI if `OPENAI_API_KEY` is configured
-- If you want the most VPN-resistant setup, run Ollama locally and keep using `Computer Control` for browser commands
+- Computer Control planning runs locally through your backend, so it is much less dependent on the AI provider path than the regular chat mode
+- By default, Computer Control uses the reliable local chronological planner first
+- If you want Computer Control to ask an AI model to build the browser-action plan before execution, set `COMPUTER_MODE_USE_AI_PLANNER=true`

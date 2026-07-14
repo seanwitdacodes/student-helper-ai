@@ -142,7 +142,7 @@ function ChatInput({
     : centered
       ? "Type @ for connectors and sources"
       : mode === "computer"
-      ? "Tell Operator AI what browser tabs to open..."
+      ? "Use the Conductor extension for Chrome tasks..."
       : "Ask Operator AI anything...";
 
   const activeModeLabel =

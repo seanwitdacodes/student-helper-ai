@@ -143,6 +143,7 @@ function normalizeConversation(conversation) {
     mode,
     title,
     messages: Array.isArray(rest.messages) ? rest.messages : [],
+    computerSessionId: String(rest.computerSessionId || "").trim(),
     createdAt: Number(rest.createdAt) || Date.now(),
     updatedAt: Number(rest.updatedAt) || Date.now(),
   };
@@ -164,6 +165,107 @@ function makeTitle(text, fallback = "New chat") {
     .trim()
     .replace(/\s+/g, " ");
   return cleaned.slice(0, 52) || fallback;
+}
+
+function buildComputerConversationContext(conversation, nextUserMessage) {
+  const history = Array.isArray(conversation?.messages)
+    ? conversation.messages
+        .filter(
+          (message) =>
+            message &&
+            typeof message === "object" &&
+            !message.isStreaming &&
+            String(message.content || "").trim(),
+        )
+        .slice(-12)
+        .map((message) => ({
+          role: message.role === "assistant" ? "assistant" : "user",
+          content: String(message.content || "").trim(),
+        }))
+    : [];
+
+  if (String(nextUserMessage || "").trim()) {
+    history.push({
+      role: "user",
+      content: String(nextUserMessage || "").trim(),
+    });
+  }
+
+  return history.slice(-16);
+}
+
+async function ensureComputerSession(conversation) {
+  const response = await fetch(buildApiUrl("/computer/session"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: String(conversation?.computerSessionId || "").trim(),
+    }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.session?.id) {
+    throw new Error(
+      data?.detail || "Computer Control could not start a shared session.",
+    );
+  }
+
+  return data.session;
+}
+
+async function enqueueComputerCommand(
+  sessionId,
+  command,
+  source = "web",
+  context = [],
+) {
+  const response = await fetch(buildApiUrl(`/computer/session/${sessionId}/command`), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ command, source, context }),
+  });
+
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.task?.id) {
+    throw new Error(
+      data?.detail || "Computer Control could not send that task to Conductor.",
+    );
+  }
+
+  return data;
+}
+
+async function waitForComputerTask(sessionId, taskId) {
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < 90 * 1000) {
+    const response = await fetch(
+      buildApiUrl(`/computer/session/${sessionId}/task/${taskId}`),
+    );
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      throw new Error(
+        data?.detail || "Computer Control lost track of the shared task.",
+      );
+    }
+
+    const status = String(data?.task?.status || "").trim();
+    if (status === "completed") {
+      return data.task.result || "Conductor finished the browser task.";
+    }
+    if (status === "failed") {
+      throw new Error(
+        data.task.error || "Conductor could not complete that browser task.",
+      );
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, 1200));
+  }
+
+  throw new Error(
+    "Conductor has not finished yet. Keep the extension open and try again in a moment.",
+  );
 }
 
 function mergeStreamingMessage(messages, streamingMessage) {
@@ -234,7 +336,7 @@ function ConversationStage({
 
       {!isHome && (
         <div className="thread-screen">
-          <ChatWindow messages={messages} />
+          <ChatWindow messages={messages} mode={mode} />
           <div className="thread-composer">
             <ChatInput
               mode={mode}
@@ -544,6 +646,61 @@ function App() {
     setHomeDraftVersion((current) => current + 1);
 
     try {
+      if (mode === COMPUTER_MODE) {
+        const session = await ensureComputerSession(activeConversation);
+        if (session.id !== activeConversation.computerSessionId) {
+          updateConversation(convoId, (conversation) => ({
+            ...conversation,
+            computerSessionId: session.id,
+            updatedAt: Date.now(),
+          }));
+        }
+
+        setStreamingMessage({
+          conversationId: convoId,
+          messageId: assistantId,
+          content: "Sent to Conductor. Waiting for the extension...",
+          isStreaming: true,
+        });
+
+        const queued = await enqueueComputerCommand(
+          session.id,
+          text,
+          "web",
+          buildComputerConversationContext(activeConversation, text),
+        );
+        setStreamingMessage({
+          conversationId: convoId,
+          messageId: assistantId,
+          content: "Conductor picked up the task. Working in Chrome...",
+          isStreaming: true,
+        });
+
+        const result = await waitForComputerTask(session.id, queued.task.id);
+
+        updateConversation(convoId, (conversation) => ({
+          ...conversation,
+          computerSessionId: session.id,
+          messages: conversation.messages.map((message) =>
+            message.id === assistantId
+              ? {
+                  ...message,
+                  content: result,
+                  isStreaming: false,
+                }
+              : message,
+          ),
+          updatedAt: Date.now(),
+        }));
+        setStreamingMessage((current) =>
+          current?.conversationId === convoId &&
+          current?.messageId === assistantId
+            ? null
+            : current,
+        );
+        return;
+      }
+
       const res = await fetch(buildApiUrl("/chat"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },

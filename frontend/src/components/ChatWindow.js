@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import Message from "./Message";
+import ComputerControlGuide from "./ComputerControlGuide";
 
 const LEGACY_WELCOME_MESSAGES = new Set([
   "Math Mode is ready. Upload a problem or type one to get a step-by-step solution.",
@@ -9,7 +10,7 @@ const LEGACY_WELCOME_MESSAGES = new Set([
   "Computer Control is ready.",
 ]);
 
-function ChatWindow({ messages }) {
+function ChatWindow({ messages, mode }) {
   const viewportRef = useRef(null);
   const bottomAnchorRef = useRef(null);
   const shouldStickToBottomRef = useRef(true);
@@ -50,7 +51,11 @@ function ChatWindow({ messages }) {
           shouldStickToBottomRef.current = distanceFromBottom < 96;
         }}
       >
-        {showWelcome && <div className="thread-empty-state" />}
+        {showWelcome && (
+          <div className="thread-empty-state">
+            {mode === "computer" ? <ComputerControlGuide /> : null}
+          </div>
+        )}
 
         {!showWelcome && (
           <div className="thread-stack">

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Conductor</title>
+    <link rel="stylesheet" href="./popup.css" />
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <div>
+          <p class="eyebrow">Computer Control</p>
+          <h1>Conductor</h1>
+        </div>
+        <div class="workspace-pill" id="workspaceState">No workspace yet</div>
+      </header>
+
+      <label class="label" for="taskInput">Task</label>
+      <textarea
+        id="taskInput"
+        rows="5"
+        placeholder="Open YouTube then search Dhar Mann"
+      ></textarea>
+
+      <div class="actions">
+        <button id="runButton" class="primary-button" type="button">Run</button>
+        <button id="reuseButton" class="secondary-button" type="button">
+          Continue workspace
+        </button>
+      </div>
+
+      <section class="status-panel">
+        <div class="status-header">
+          <span>Status</span>
+          <button id="clearStatusButton" class="link-button" type="button">Clear</button>
+        </div>
+        <pre id="statusOutput">Ready.</pre>
+      </section>
+
+      <section class="chat-panel">
+        <div class="tips-title">Conversation</div>
+        <div id="memoryOutput" class="chat-transcript">
+          <div class="chat-empty">No shared session memory yet.</div>
+        </div>
+      </section>
+
+      <section class="tips-panel">
+        <div class="tips-title">Good prompts</div>
+        <ul>
+          <li>Open Amazon then search track spikes</li>
+          <li>Continue workspace and click the first result</li>
+          <li>Open YouTube then look up FlightReacts</li>
+          <li>Summarize this page</li>
+        </ul>
+      </section>
+    </main>
+
+    <script type="module" src="./popup.js"></script>
+  </body>
+</html>

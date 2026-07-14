@@ -1197,7 +1197,276 @@ button {
 }
 
 .thread-empty-state {
-  min-height: 1px;
+  width: min(100%, 960px);
+  margin: 0 auto;
+  padding: 0.4rem 0 1rem;
+}
+
+.computer-guide {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr);
+  gap: 1.2rem;
+  padding: 1.25rem;
+  border-radius: 28px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at top left, rgba(244, 195, 143, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(31, 26, 24, 0.98), rgba(24, 21, 20, 0.96));
+  box-shadow: var(--shadow);
+}
+
+.computer-guide-copy h2 {
+  margin: 0;
+  max-width: 15ch;
+  font-size: clamp(2rem, 3.6vw, 3rem);
+  line-height: 0.98;
+  letter-spacing: -0.06em;
+}
+
+.computer-guide-copy p {
+  margin: 0.95rem 0 0;
+  max-width: 58ch;
+  color: rgba(235, 225, 219, 0.74);
+  line-height: 1.75;
+}
+
+.computer-guide-kicker {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.38rem 0.72rem;
+  border-radius: 999px;
+  margin-bottom: 0.95rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(249, 232, 214, 0.88);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.computer-guide-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.8rem;
+  margin: 1.25rem 0 1.35rem;
+}
+
+.computer-guide-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.9rem;
+  padding: 0.8rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-color);
+  text-decoration: none;
+  font-weight: 600;
+  transition:
+    transform 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease;
+}
+
+.computer-guide-action.primary {
+  background: linear-gradient(135deg, #f3d7b2 0%, #f6ead9 100%);
+  color: #241814;
+  border-color: transparent;
+}
+
+.computer-guide-action:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.computer-guide-action.primary:hover {
+  background: linear-gradient(135deg, #f7dfbe 0%, #fbf2e7 100%);
+}
+
+.computer-guide-steps {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.computer-guide-step {
+  display: grid;
+  grid-template-columns: 2.35rem minmax(0, 1fr);
+  gap: 0.85rem;
+  padding: 0.9rem 0.95rem;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.computer-guide-step-number {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.35rem;
+  height: 2.35rem;
+  border-radius: 15px;
+  background: rgba(245, 217, 183, 0.12);
+  color: rgba(249, 232, 214, 0.92);
+  font-weight: 800;
+}
+
+.computer-guide-step strong {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.96rem;
+}
+
+.computer-guide-step p {
+  margin: 0;
+  color: var(--muted-text);
+  font-size: 0.93rem;
+  line-height: 1.6;
+}
+
+.computer-guide-graphic {
+  display: flex;
+  align-items: stretch;
+  min-height: 100%;
+}
+
+.computer-guide-browser {
+  width: 100%;
+  min-height: 420px;
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(circle at 10% 12%, rgba(255, 255, 255, 0.06), transparent 28%),
+    linear-gradient(180deg, rgba(40, 33, 30, 0.96), rgba(21, 18, 17, 0.98));
+  overflow: hidden;
+}
+
+.computer-guide-browser-top {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.9rem 1rem 0.6rem;
+}
+
+.computer-guide-browser-top span {
+  width: 0.58rem;
+  height: 0.58rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.computer-guide-tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 1rem 0.95rem;
+}
+
+.computer-guide-tab,
+.computer-guide-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.62rem 0.82rem;
+  border-radius: 14px;
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+
+.computer-guide-tab {
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.computer-guide-tab.is-workspace {
+  background: rgba(244, 195, 143, 0.14);
+  color: rgba(249, 232, 214, 0.92);
+}
+
+.computer-guide-pill {
+  margin-left: auto;
+  background: rgba(159, 207, 255, 0.12);
+  color: rgba(203, 231, 255, 0.92);
+}
+
+.computer-guide-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 1rem;
+  padding: 0 1rem 1rem;
+}
+
+.computer-guide-page-card,
+.computer-guide-panel {
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.computer-guide-page-card {
+  padding: 1rem;
+}
+
+.computer-guide-line {
+  height: 0.72rem;
+  border-radius: 999px;
+  margin-bottom: 0.6rem;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.computer-guide-line.short {
+  width: 42%;
+}
+
+.computer-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 1rem;
+}
+
+.computer-guide-grid div {
+  height: 120px;
+  border-radius: 16px;
+  background: linear-gradient(
+    180deg,
+    rgba(244, 195, 143, 0.1),
+    rgba(255, 255, 255, 0.04)
+  );
+}
+
+.computer-guide-panel {
+  padding: 0.95rem;
+}
+
+.computer-guide-panel-title {
+  margin-bottom: 0.8rem;
+  color: rgba(203, 231, 255, 0.92);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.computer-guide-bubble {
+  padding: 0.8rem 0.86rem;
+  border-radius: 16px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.computer-guide-bubble + .computer-guide-bubble {
+  margin-top: 0.7rem;
+}
+
+.computer-guide-bubble.is-user {
+  background: rgba(244, 195, 143, 0.14);
+  color: rgba(249, 232, 214, 0.92);
+}
+
+.computer-guide-bubble.is-ai {
+  background: rgba(159, 207, 255, 0.1);
+  color: rgba(225, 239, 255, 0.88);
 }
 
 .message {
@@ -1518,6 +1787,18 @@ button {
 }
 
 @media (max-width: 920px) {
+  .computer-guide {
+    grid-template-columns: 1fr;
+  }
+
+  .computer-guide-copy h2 {
+    max-width: none;
+  }
+
+  .computer-guide-page {
+    grid-template-columns: 1fr;
+  }
+
   .main-shell {
     padding: 0.85rem 1rem 1rem;
   }
